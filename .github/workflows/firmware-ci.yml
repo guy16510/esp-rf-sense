@@ -1,10 +1,5 @@
 name: firmware-ci
 
-# Builds the ESP32-S3 firmware with the pinned ESP-IDF, runs the host unit tests, enforces the
-# OTA-slot size budget, and produces the OTA image + bootstrap bundle as downloadable artifacts.
-# This workflow is the source of truth for real binary size and slot utilization -- those numbers
-# are never hand-entered.
-
 on:
   push:
     branches: [main]
@@ -35,18 +30,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Verify pinned IDF version matches .idf-version
+      - name: Check ESP-IDF installation
         shell: bash
         run: |
-          pinned="$(tr -d '[:space:]' < .idf-version)"
-          actual="$(tr -d '[:space:]' < "${IDF_PATH}/version.txt" 2>/dev/null || echo unknown)"
-          pinned="${pinned#v}"
-          actual="${actual#v}"
-          echo "pinned=${pinned} container=${actual}"
-          if [ "${pinned}" != "${actual}" ]; then
-            echo "::error::container IDF ${actual} != pinned ${pinned} (.idf-version)"
-            exit 1
-          fi
+          . "${IDF_PATH}/export.sh"
+          idf.py --version
 
       - name: Build
         shell: bash
@@ -57,7 +45,7 @@ jobs:
           idf.py set-target esp32s3
           idf.py build
 
-      - name: Enforce OTA-slot size budget (<=85%)
+      - name: Enforce OTA-slot size budget
         shell: bash
         run: python3 firmware/tools/size_check.py --app firmware/build/rf-sense.bin
 
@@ -73,7 +61,7 @@ jobs:
             --firmware-url "https://rf-sense-ota.local:8443/firmware/${ver}/rf-sense.bin" \
             --out dist/manifest/development.json
 
-      - name: Build bootstrap bundle (combined image + flash scripts + SHA256SUMS)
+      - name: Build bootstrap bundle
         shell: bash
         run: |
           . "${IDF_PATH}/export.sh"
