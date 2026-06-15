@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "rfsense-analysis"
 version = "0.1.0"
-description = "Offline CSI analysis, live inference, and an interactive RF scene dashboard."
+description = "Offline CSI analysis, feature extraction, evaluation, and model development."
 requires-python = ">=3.12"
 dependencies = [
     "numpy>=1.26",
@@ -23,15 +23,10 @@ rfsense-parse = "rfsense_analysis.cli:parse_main"
 rfsense-features = "rfsense_analysis.cli:features_main"
 rfsense-evaluate = "rfsense_analysis.cli:evaluate_main"
 rfsense-train = "rfsense_analysis.cli:train_main"
-rfsense-live = "rfsense_analysis.dashboard_entry:main"
-rfsense-live-legacy = "rfsense_analysis.live:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["rfsense_analysis*"]
-
-[tool.setuptools.package-data]
-rfsense_analysis = ["web/*.html", "web/*.css", "web/*.js"]
 
 [tool.ruff]
 line-length = 100
@@ -40,9 +35,6 @@ target-version = "py312"
 [tool.ruff.lint]
 select = ["E", "F", "I", "W", "UP", "B"]
 ignore = ["E501"]
-
-[tool.ruff.lint.per-file-ignores]
-"rfsense_analysis/dashboard.py" = ["F401"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
