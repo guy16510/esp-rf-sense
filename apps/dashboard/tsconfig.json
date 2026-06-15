@@ -4,6 +4,14 @@
     "rootDir": "src",
     "outDir": "dist"
   },
-  "include": ["src/**/*.ts"],
-  "exclude": ["src/features.ts"]
+  "files": [
+    "src/contracts.ts",
+    "src/events.ts",
+    "src/node-engine.ts",
+    "src/node-server.ts",
+    "src/numeric-features.ts",
+    "src/protocol.ts",
+    "src/ring-buffer.ts",
+    "src/run.ts"
+  ]
 }
