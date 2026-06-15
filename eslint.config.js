@@ -1,4 +1,4 @@
-// Flat ESLint config (ESLint 9) for the TypeScript host tools.
+// Flat ESLint config (ESLint 9) for the TypeScript host tools and dashboard.
 import tseslint from '@typescript-eslint/eslint-plugin';
 import tsparser from '@typescript-eslint/parser';
 
@@ -7,7 +7,7 @@ export default [
     ignores: ['**/dist/**', '**/node_modules/**', 'tools/analysis/**'],
   },
   {
-    files: ['tools/**/src/**/*.ts'],
+    files: ['tools/**/src/**/*.ts', 'apps/**/src/**/*.ts'],
     languageOptions: {
       parser: tsparser,
       parserOptions: { ecmaVersion: 2022, sourceType: 'module' },
