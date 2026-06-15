@@ -1,0 +1,13 @@
+{
+  "name": "@rf-sense/collector",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "UDP CSI collector: validates the binary protocol, detects loss/reboots, and records raw + decoded frames.",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc --build",
+    "start": "tsx src/cli.ts",
+    "export:csv": "tsx src/export-csv.ts"
+  }
+}

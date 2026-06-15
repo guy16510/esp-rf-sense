@@ -1,0 +1,49 @@
+# --- ESP-IDF / firmware build artifacts ---
+firmware/build/
+firmware/build-*/
+firmware/sdkconfig
+firmware/sdkconfig.old
+firmware/managed_components/
+firmware/dependencies.lock.tmp
+*.bin.bak
+build/
+
+# Bootstrap / release output (produced by CI or the build machine, never committed)
+dist/
+
+# --- Node / TypeScript ---
+node_modules/
+tools/**/dist/
+tools/**/build/
+*.tsbuildinfo
+npm-debug.log*
+.npm/
+
+# --- Python (analysis) ---
+tools/analysis/.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# --- Collector / experiment data (raw recordings are large; keep out of git) ---
+data/
+recordings/
+*.jsonl
+*.csi.bin
+
+# --- TLS material (never commit private keys/certs) ---
+secrets/
+*.key
+*.pem
+*.crt
+*.p12
+!tools/ota-server/certs/README.md
+
+# --- Editor / OS ---
+.DS_Store
+.vscode/
+.idea/
+*.swp

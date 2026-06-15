@@ -1,0 +1,114 @@
+name: deploy-ota
+
+# Promotes an already-built release to the stable OTA server. This NEVER rebuilds firmware:
+# it downloads the assets attached to an existing GitHub Release, re-verifies their SHA256SUMS,
+# uploads the firmware image first, and only then switches the stable manifest -- so the device
+# never sees a manifest that points at a file that isn't fully in place yet.
+#
+# The deploy target is supplied entirely through the `ota-deploy` environment's secrets, so the
+# server address and SSH key are never in the repo. Requires a manual trigger and approval.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to deploy, e.g. v0.1.0"
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  # Never let two deploys race on the same stable manifest.
+  group: deploy-ota-stable
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: promote release to stable OTA server
+    runs-on: ubuntu-latest
+    environment: ota-deploy
+    steps:
+      - name: Download release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.inputs.tag }}
+        run: |
+          set -euo pipefail
+          mkdir -p incoming
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir incoming
+          echo "downloaded:"
+          ls -la incoming
+
+      - name: Re-verify SHA256SUMS
+        working-directory: incoming
+        run: |
+          set -euo pipefail
+          test -f SHA256SUMS || { echo "::error::release is missing SHA256SUMS"; exit 1; }
+          # The release flattens bootstrap/** into the asset list; check only files we received.
+          ok=0
+          while read -r sum name; do
+            base="$(basename "$name")"
+            if [ -f "$base" ]; then
+              echo "${sum}  ${base}" | sha256sum -c -
+              ok=$((ok+1))
+            fi
+          done < SHA256SUMS
+          [ "$ok" -gt 0 ] || { echo "::error::no files matched SHA256SUMS"; exit 1; }
+          echo "verified ${ok} files"
+
+      - name: Resolve version and locate firmware + manifest
+        id: locate
+        working-directory: incoming
+        run: |
+          set -euo pipefail
+          ver="${{ github.event.inputs.tag }}"; ver="${ver#v}"
+          fw="rf-sense-${ver}.bin"
+          test -f "$fw" || { echo "::error::expected ${fw} in release"; exit 1; }
+          test -f stable.json || { echo "::error::expected stable.json in release"; exit 1; }
+          # The manifest's version must match the tag, or devices would reject the update.
+          man_ver="$(python3 -c 'import json,sys;print(json.load(open("stable.json"))["version"])')"
+          if [ "$man_ver" != "$ver" ]; then
+            echo "::error::stable.json version ${man_ver} != tag version ${ver}"; exit 1
+          fi
+          echo "version=${ver}" >> "$GITHUB_OUTPUT"
+          echo "firmware=${fw}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up SSH to the OTA server
+        env:
+          SSH_KEY: ${{ secrets.OTA_DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.OTA_DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          test -n "$SSH_KEY" || { echo "::error::OTA_DEPLOY_SSH_KEY secret is not set"; exit 1; }
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+      - name: Upload firmware, then atomically switch stable manifest
+        working-directory: incoming
+        env:
+          SSH_HOST: ${{ secrets.OTA_DEPLOY_HOST }}
+          SSH_USER: ${{ secrets.OTA_DEPLOY_USER }}
+          OTA_ROOT: ${{ secrets.OTA_DEPLOY_ROOT }}
+          VERSION: ${{ steps.locate.outputs.version }}
+          FIRMWARE: ${{ steps.locate.outputs.firmware }}
+        run: |
+          set -euo pipefail
+          for v in SSH_HOST SSH_USER OTA_ROOT; do
+            eval "val=\${$v:-}"; [ -n "$val" ] || { echo "::error::${v} secret is not set"; exit 1; }
+          done
+          SSH="ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes ${SSH_USER}@${SSH_HOST}"
+          SCP="scp -i ~/.ssh/deploy_key -o IdentitiesOnly=yes"
+
+          # 1) Firmware first: upload to a per-version dir so the file is fully present before
+          #    any manifest references it. Idempotent if the version was deployed before.
+          $SSH "mkdir -p '${OTA_ROOT}/firmware/${VERSION}' '${OTA_ROOT}/manifest'"
+          $SCP "${FIRMWARE}" "${SSH_USER}@${SSH_HOST}:${OTA_ROOT}/firmware/${VERSION}/rf-sense.bin"
+
+          # 2) Manifest last: upload to a temp name, then mv -- an atomic rename on the same
+          #    filesystem -- so a device polling /manifest/stable.json never reads a partial file.
+          $SCP stable.json "${SSH_USER}@${SSH_HOST}:${OTA_ROOT}/manifest/stable.json.incoming"
+          $SSH "mv -f '${OTA_ROOT}/manifest/stable.json.incoming' '${OTA_ROOT}/manifest/stable.json'"
+          echo "deployed ${FIRMWARE} and switched stable manifest to ${VERSION}"

@@ -1,0 +1,17 @@
+# Custom 4 MB partition table for esp32-rf-sense-lab (ESP32-S3, 4 MB flash).
+# Two large EQUAL OTA application slots; no factory app. The 56 KB gap forced by app
+# 64 KB-alignment is reused for a coredump partition (no app capacity sacrificed).
+#
+#   Bootloader      0x0      .. 0x8000   (not in this table)
+#   Partition table 0x8000   .. 0x9000
+#
+# App-size CI hard-fail threshold = 85% of 0x1f0000 = 1,726,873 bytes (>=15% headroom).
+# Changing any offset/size here REQUIRES a new physical bootstrap flash (not OTA-able).
+#
+# Name,     Type, SubType,  Offset,    Size
+nvs,        data, nvs,      0x9000,    0x6000
+otadata,    data, ota,      0xf000,    0x2000
+phy_init,   data, phy,      0x11000,   0x1000
+coredump,   data, coredump, 0x12000,   0xe000
+ota_0,      app,  ota_0,    0x20000,   0x1f0000
+ota_1,      app,  ota_1,    0x210000,  0x1f0000

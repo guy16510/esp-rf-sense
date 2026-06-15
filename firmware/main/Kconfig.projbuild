@@ -1,0 +1,37 @@
+menu "RF-Sense Lab"
+
+    config RF_SENSE_OTA_ALLOW_INSECURE_HTTP
+        bool "Allow plain-HTTP OTA endpoints (DEVELOPMENT ONLY)"
+        default n
+        help
+            When disabled (the default and the only production-safe setting), the OTA manager
+            refuses any manifest or firmware URL that is not https://. TLS server verification
+            is always performed; there is never a "skip certificate validation" path.
+
+            Enable ONLY for local development against a plain-HTTP OTA server. Release builds
+            must keep this off.
+
+    config RF_SENSE_OTA_VERIFY_PERIOD_S
+        int "Post-OTA health verification period (seconds)"
+        default 30
+        range 5 600
+        help
+            After an OTA boot the new app runs in pending-verify state. It must stay healthy
+            for this many seconds (and pass all startup diagnostics) before being marked valid.
+            If it fails, the bootloader rolls back to the previous slot.
+
+    config RF_SENSE_BOOTLOOP_THRESHOLD
+        int "Consecutive failed boots that trigger rollback"
+        default 3
+        range 2 10
+        help
+            If this many consecutive boots fail to reach a healthy state, the device marks the
+            running image invalid and rolls back.
+
+endmenu
+config RF_SENSE_CLASSIC_ESP32_EXPERIMENT
+    bool "Enable disposable classic ESP32 experiment profile"
+    default n
+    help
+        Uses reduced internal-RAM queues and an experimental board identity.
+        Never enable this for the production ESP32-S3 build.

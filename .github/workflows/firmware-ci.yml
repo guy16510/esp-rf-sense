@@ -1,0 +1,90 @@
+name: firmware-ci
+
+# Builds the ESP32-S3 firmware with the pinned ESP-IDF, runs the host unit tests, enforces the
+# OTA-slot size budget, and produces the OTA image + bootstrap bundle as downloadable artifacts.
+# This workflow is the source of truth for real binary size and slot utilization -- those numbers
+# are never hand-entered.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  host-tests:
+    name: host unit tests (pure logic)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure and build host tests
+        run: |
+          cmake -S firmware/test/host -B build/host-test
+          cmake --build build/host-test
+      - name: Run host tests
+        run: ctest --test-dir build/host-test --output-on-failure
+
+  firmware:
+    name: build firmware (ESP-IDF v5.3.2)
+    runs-on: ubuntu-latest
+    container:
+      image: espressif/idf:v5.3.2
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify pinned IDF version matches .idf-version
+        shell: bash
+        run: |
+          pinned="$(tr -d '[:space:]' < .idf-version)"
+          actual="$(tr -d '[:space:]' < "${IDF_PATH}/version.txt" 2>/dev/null || echo unknown)"
+          echo "pinned=${pinned} container=${actual}"
+          if [ "${pinned}" != "${actual}" ]; then
+            echo "::error::container IDF ${actual} != pinned ${pinned} (.idf-version)"
+            exit 1
+          fi
+
+      - name: Build
+        shell: bash
+        working-directory: firmware
+        run: |
+          . "${IDF_PATH}/export.sh"
+          export RF_SENSE_GIT_COMMIT="${GITHUB_SHA::8}"
+          idf.py set-target esp32s3
+          idf.py build
+
+      - name: Enforce OTA-slot size budget (<=85%)
+        shell: bash
+        run: python3 firmware/tools/size_check.py --app firmware/build/rf-sense.bin
+
+      - name: Generate development manifest
+        shell: bash
+        run: |
+          ver="$(tr -d '[:space:]' < firmware/version.txt)"
+          python3 firmware/tools/gen_manifest.py \
+            --app firmware/build/rf-sense.bin \
+            --version "${ver}" \
+            --channel development \
+            --build-id "${GITHUB_SHA::8}" \
+            --firmware-url "https://rf-sense-ota.local:8443/firmware/${ver}/rf-sense.bin" \
+            --out dist/manifest/development.json
+
+      - name: Build bootstrap bundle (combined image + flash scripts + SHA256SUMS)
+        shell: bash
+        run: |
+          . "${IDF_PATH}/export.sh"
+          python3 firmware/tools/build_bootstrap_bundle.py \
+            --build-dir firmware/build --out dist/bootstrap --chip esp32s3
+
+      - name: Upload firmware artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: rf-sense-firmware-${{ github.sha }}
+          path: |
+            firmware/build/rf-sense.bin
+            firmware/build/flasher_args.json
+            dist/bootstrap/**
+            dist/manifest/development.json
+          if-no-files-found: error

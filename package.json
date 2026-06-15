@@ -1,0 +1,46 @@
+{
+  "name": "esp32-rf-sense-lab",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Research harness for device-free human sensing with one ESP32-S3 Wi-Fi CSI receiver and an existing 2.4 GHz router.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22 <23"
+  },
+  "workspaces": [
+    "tools/collector",
+    "tools/ota-server",
+    "tools/cli",
+    "tools/experiments"
+  ],
+  "scripts": {
+    "build": "tsc --build tools/collector tools/ota-server tools/cli tools/experiments",
+    "clean": "tsc --build --clean tools/collector tools/ota-server tools/cli tools/experiments",
+    "typecheck": "tsc --build tools/collector tools/ota-server tools/cli tools/experiments",
+    "lint": "eslint \"tools/**/src/**/*.ts\"",
+    "format:check": "prettier --check \"tools/**/src/**/*.ts\" \"*.json\"",
+    "format": "prettier --write \"tools/**/src/**/*.ts\" \"*.json\"",
+    "test": "vitest run",
+    "collector:start": "tsx tools/collector/src/cli.ts",
+    "experiment:start": "tsx tools/experiments/src/cli.ts start",
+    "experiment:stop": "tsx tools/experiments/src/cli.ts stop",
+    "experiment:status": "tsx tools/experiments/src/cli.ts status",
+    "export:csv": "tsx tools/collector/src/export-csv.ts",
+    "ota-server:start": "tsx tools/ota-server/src/cli.ts",
+    "device:discover": "tsx tools/cli/src/discover.ts",
+    "device:ota:check": "tsx tools/cli/src/ota.ts check",
+    "device:ota:apply": "tsx tools/cli/src/ota.ts apply",
+    "device:status": "tsx tools/cli/src/status.ts"
+  },
+  "devDependencies": {
+    "@types/node": "22.19.21",
+    "@typescript-eslint/eslint-plugin": "8.20.0",
+    "@typescript-eslint/parser": "8.20.0",
+    "eslint": "9.39.4",
+    "prettier": "3.4.2",
+    "tsx": "4.22.4",
+    "typescript": "5.7.3",
+    "vitest": "4.1.9"
+  }
+}

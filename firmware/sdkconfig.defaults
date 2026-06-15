@@ -1,0 +1,68 @@
+# Default sdkconfig for esp32-rf-sense-lab. Committed; the generated `sdkconfig` is NOT.
+# Target: ESP32-S3-WROOM-1-N4R8 (4 MB flash, 8 MB octal PSRAM).
+
+# --- Target / flash ---
+CONFIG_IDF_TARGET="esp32s3"
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+CONFIG_ESPTOOLPY_FLASHSIZE="4MB"
+CONFIG_ESPTOOLPY_FLASHMODE_DIO=y
+CONFIG_ESPTOOLPY_FLASHFREQ_80M=y
+
+# --- Custom partition table (two large OTA slots) ---
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+CONFIG_PARTITION_TABLE_OFFSET=0x8000
+
+# --- PSRAM (8 MB octal) ---
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y
+CONFIG_SPIRAM_USE_MALLOC=y
+CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=16384
+CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=y
+
+# --- OTA application rollback (NOT irreversible anti-rollback) ---
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
+# Explicitly DO NOT enable anti-rollback / secure boot / flash encryption during research.
+# CONFIG_BOOTLOADER_APP_ANTI_ROLLBACK is intentionally left unset.
+
+# --- Wi-Fi CSI ---
+CONFIG_ESP_WIFI_CSI_ENABLED=y
+CONFIG_ESP_WIFI_NVS_ENABLED=y
+
+# --- HTTPS OTA / TLS ---
+# Certificate bundle for the public-endpoint OTA path (the private-CA path embeds its own
+# root and does not need the bundle, but enabling it keeps both options available).
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE=y
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_FULL=y
+CONFIG_ESP_HTTPS_OTA_ALLOW_HTTP=n
+CONFIG_ESP_TLS_INSECURE=n
+
+# --- HTTP server (control API) ---
+CONFIG_HTTPD_MAX_REQ_HDR_LEN=1024
+CONFIG_HTTPD_MAX_URI_LEN=512
+
+# --- ICMP ping (controlled mode) ---
+CONFIG_LWIP_IPV4=y
+CONFIG_LWIP_ICMP=y
+
+# --- Runtime sizing ---
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=6144
+CONFIG_FREERTOS_HZ=1000
+CONFIG_ESP_TASK_WDT_EN=y
+CONFIG_ESP_TASK_WDT_TIMEOUT_S=10
+CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU0=n
+
+# --- Coredump to the dedicated diagnostic partition ---
+CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH=y
+CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF=y
+CONFIG_ESP_COREDUMP_CHECKSUM_CRC32=y
+
+# --- Size-oriented build (must fit within one OTA slot with >=15% headroom) ---
+CONFIG_COMPILER_OPTIMIZATION_SIZE=y
+CONFIG_COMPILER_CXX_EXCEPTIONS=n
+CONFIG_COMPILER_CXX_RTTI=n
+
+# --- Logging ---
+CONFIG_LOG_DEFAULT_LEVEL_INFO=y
+CONFIG_LOG_MAXIMUM_LEVEL_DEBUG=y

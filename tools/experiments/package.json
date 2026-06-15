@@ -1,0 +1,14 @@
+{
+  "name": "@rf-sense/experiments",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Remote experiment runner: drives device + collector and records fully-described session metadata.",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc --build",
+    "start": "tsx src/cli.ts start",
+    "stop": "tsx src/cli.ts stop",
+    "status": "tsx src/cli.ts status"
+  }
+}

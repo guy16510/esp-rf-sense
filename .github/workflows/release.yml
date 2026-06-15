@@ -1,0 +1,145 @@
+name: release
+
+# Cuts a release from a semver tag (vX.Y.Z). It rebuilds the firmware from the tagged tree
+# with the pinned ESP-IDF, enforces the OTA-slot budget, regenerates the bootstrap bundle and
+# the stable manifest, computes SHA256SUMS, and attaches everything to a GitHub Release.
+# Nothing is hand-entered: sizes, hashes, the embedded git SHA, IDF version, and partition-table
+# hash all come from the build of the tagged commit. The release fails if any test fails.
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing semver tag to (re)build, e.g. v0.1.0"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  host-tests:
+    name: host unit tests (pure logic)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure and build host tests
+        run: |
+          cmake -S firmware/test/host -B build/host-test
+          cmake --build build/host-test
+      - name: Run host tests
+        run: ctest --test-dir build/host-test --output-on-failure
+
+  node-tools:
+    name: node tool tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+
+  release:
+    name: build + publish release
+    needs: [host-tests, node-tools]
+    runs-on: ubuntu-latest
+    container:
+      image: espressif/idf:v5.3.2
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve release tag and version
+        id: meta
+        shell: bash
+        run: |
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            tag="${{ github.event.inputs.tag }}"
+          else
+            tag="${GITHUB_REF_NAME}"
+          fi
+          ver="${tag#v}"
+          file_ver="$(tr -d '[:space:]' < firmware/version.txt)"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "version=${ver}" >> "$GITHUB_OUTPUT"
+          echo "resolved tag=${tag} version=${ver} (firmware/version.txt=${file_ver})"
+          if [ "${ver}" != "${file_ver}" ]; then
+            echo "::error::tag version ${ver} != firmware/version.txt ${file_ver}; bump version.txt before tagging"
+            exit 1
+          fi
+
+      - name: Verify pinned IDF version matches .idf-version
+        shell: bash
+        run: |
+          pinned="$(tr -d '[:space:]' < .idf-version)"
+          actual="$(tr -d '[:space:]' < "${IDF_PATH}/version.txt" 2>/dev/null || echo unknown)"
+          echo "pinned=${pinned} container=${actual}"
+          if [ "${pinned}" != "${actual}" ]; then
+            echo "::error::container IDF ${actual} != pinned ${pinned} (.idf-version)"
+            exit 1
+          fi
+
+      - name: Build firmware from the tagged tree
+        shell: bash
+        working-directory: firmware
+        run: |
+          . "${IDF_PATH}/export.sh"
+          export RF_SENSE_GIT_COMMIT="${GITHUB_SHA::8}"
+          idf.py set-target esp32s3
+          idf.py build
+
+      - name: Enforce OTA-slot size budget (<=85%)
+        shell: bash
+        run: python3 firmware/tools/size_check.py --app firmware/build/rf-sense.bin
+
+      - name: Generate stable manifest
+        shell: bash
+        run: |
+          ver="${{ steps.meta.outputs.version }}"
+          python3 firmware/tools/gen_manifest.py \
+            --app firmware/build/rf-sense.bin \
+            --version "${ver}" \
+            --channel stable \
+            --build-id "${GITHUB_SHA::8}" \
+            --firmware-url "https://rf-sense-ota.local:8443/firmware/${ver}/rf-sense.bin" \
+            --out dist/manifest/stable.json
+
+      - name: Build bootstrap bundle
+        shell: bash
+        run: |
+          . "${IDF_PATH}/export.sh"
+          python3 firmware/tools/build_bootstrap_bundle.py \
+            --build-dir firmware/build --out dist/bootstrap --chip esp32s3
+
+      - name: Assemble release artifacts + SHA256SUMS
+        shell: bash
+        run: |
+          ver="${{ steps.meta.outputs.version }}"
+          mkdir -p dist/release
+          cp firmware/build/rf-sense.bin "dist/release/rf-sense-${ver}.bin"
+          cp firmware/build/flasher_args.json "dist/release/flasher_args.json"
+          cp dist/manifest/stable.json "dist/release/stable.json"
+          cp -r dist/bootstrap "dist/release/bootstrap"
+          ( cd dist/release && find . -type f ! -name SHA256SUMS -print0 \
+            | sort -z | xargs -0 sha256sum > SHA256SUMS )
+          echo "release contents:"
+          cat dist/release/SHA256SUMS
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          name: RF-Sense ${{ steps.meta.outputs.tag }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: |
+            dist/release/rf-sense-${{ steps.meta.outputs.version }}.bin
+            dist/release/stable.json
+            dist/release/SHA256SUMS
+            dist/release/bootstrap/**

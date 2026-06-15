@@ -1,0 +1,12 @@
+{
+  "name": "@rf-sense/ota-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "HTTPS manifest + firmware server for device OTA. Validates every served file at startup.",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc --build",
+    "start": "tsx src/cli.ts"
+  }
+}
