@@ -23,7 +23,7 @@ rfsense-parse = "rfsense_analysis.cli:parse_main"
 rfsense-features = "rfsense_analysis.cli:features_main"
 rfsense-evaluate = "rfsense_analysis.cli:evaluate_main"
 rfsense-train = "rfsense_analysis.cli:train_main"
-rfsense-live = "rfsense_analysis.dashboard_app:main"
+rfsense-live = "rfsense_analysis.dashboard_entry:main"
 rfsense-live-legacy = "rfsense_analysis.live:main"
 
 [tool.setuptools.packages.find]
