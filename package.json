@@ -22,7 +22,7 @@
     "format:check": "prettier --check \"tools/**/src/**/*.ts\" \"apps/**/src/**/*.ts\" \"*.json\"",
     "format": "prettier --write \"tools/**/src/**/*.ts\" \"apps/**/src/**/*.ts\" \"*.json\"",
     "test": "vitest run",
-    "dashboard:start": "tsx apps/dashboard/src/cli.ts",
+    "dashboard:start": "tsx apps/dashboard/src/run.ts",
     "collector:start": "tsx tools/collector/src/cli.ts",
     "experiment:start": "tsx tools/experiments/src/cli.ts start",
     "experiment:stop": "tsx tools/experiments/src/cli.ts stop",
