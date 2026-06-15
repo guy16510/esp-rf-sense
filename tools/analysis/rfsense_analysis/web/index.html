@@ -34,19 +34,11 @@
         <div class="panel-heading compact"><div><span class="eyebrow">INTERPRETATION</span><h2>Model belief</h2></div></div>
         <div id="scoreList" class="score-list"><p class="muted">Waiting for model scores.</p></div>
         <div class="capability-block"><h3>Available capabilities</h3><div id="capabilityList" class="capability-list"></div></div>
-        <details class="calibration-block">
-          <summary>Calibrate or add a scene class</summary>
+        <div class="capability-block">
+          <h3>Scene labels</h3>
+          <p class="muted">Richer classes can use count, pose, orientation, movement, zone, and kind metadata. The legacy live view remains available for interactive calibration.</p>
           <code>count=2|pose=standing|orientation=facing-display|zone=front</code>
-          <div class="calibration-grid">
-            <button id="recordEmpty" type="button">Record empty</button>
-            <button id="recordWalk" type="button">Record walk-by</button>
-            <input id="customLabel" maxlength="120" placeholder="Custom class label" />
-            <button id="recordCustom" type="button">Record custom</button>
-            <button id="trainButton" class="primary-button" type="button">Train detector</button>
-          </div>
-          <div class="progress"><i id="trainingProgress"></i></div>
-          <p id="trainingStatus" class="muted">Loading training state.</p><p id="trainingCounts" class="muted"></p>
-        </details>
+        </div>
       </aside>
     </section>
     <section class="panel timeline-panel">
@@ -64,6 +56,6 @@
       <svg id="profileChart" viewBox="0 0 1000 180"></svg>
     </details>
   </main>
-  <script type="module" src="/app.js"></script>
+  <script type="module" src="/boot.js"></script>
 </body>
 </html>
