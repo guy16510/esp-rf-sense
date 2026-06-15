@@ -6,15 +6,18 @@ import type { DashboardState } from './contracts.js';
 import { EventStore } from './events.js';
 import type { RealtimeEngine } from './engine.js';
 
-const PUBLIC_ROOT = fileURLToPath(new URL('../public/', import.meta.url));
+const LEGACY_PUBLIC_ROOT = fileURLToPath(
+  new URL('../../../tools/analysis/rfsense_analysis/web/', import.meta.url),
+);
+const APP_PUBLIC_ROOT = fileURLToPath(new URL('../public/', import.meta.url));
 const STATIC_FILES = new Map([
   ['/', 'index.html'],
   ['/index.html', 'index.html'],
   ['/styles.css', 'styles.css'],
   ['/d3.js', 'd3.js'],
-  ['/app.js', 'app.js'],
-  ['/scene.js', 'scene.js'],
+  ['/scene-view.js', 'scene-view.js'],
   ['/timeline.js', 'timeline.js'],
+  ['/boot.js', 'boot.js'],
 ]);
 
 export interface DashboardServerOptions {
@@ -61,7 +64,7 @@ export class DashboardServer {
 
   private publish(): void {
     this.state = this.engine.snapshot();
-    this.history.push(this.compact(this.state));
+    this.history.push({ ...this.state, amplitudeProfile: [], scores: {} });
     if (this.history.length > 1800) this.history.shift();
     const payload = JSON.stringify(this.state);
     for (const client of this.clients) client.write(`event: state\ndata: ${payload}\n\n`);
@@ -86,18 +89,19 @@ export class DashboardServer {
       }
       if (request.method === 'GET' && url.pathname === '/api/meta') {
         this.sendJson(response, 200, {
-          intervalMs: this.options.intervalMs,
-          target: this.engine.modelTarget(),
-          zones: this.engine.zones(),
+          streamIntervalMs: this.options.intervalMs,
+          target: 'presence',
+          zones: {},
           capabilities: {
-            aggregateActivity: true,
-            movement: true,
-            coarseZone: Object.keys(this.engine.zones()).length > 0,
-            timelineEvents: true,
-            sse: true,
+            sceneHypotheses: true,
+            peopleCount: false,
+            pose: false,
+            orientation: false,
+            coarseDirection: false,
+            campaignMarkers: true,
+            history: true,
           },
-          disclaimer:
-            'The bubbles represent anonymous RF activity with uncertainty, not identified people or camera tracks.',
+          disclaimer: 'The display shows anonymous aggregate RF activity with uncertainty.',
         });
         return;
       }
@@ -139,7 +143,8 @@ export class DashboardServer {
   }
 
   private async sendStatic(response: ServerResponse, name: string): Promise<void> {
-    const content = await readFile(`${PUBLIC_ROOT}${name}`);
+    const root = name === 'boot.js' ? APP_PUBLIC_ROOT : LEGACY_PUBLIC_ROOT;
+    const content = await readFile(`${root}${name}`);
     const contentType = name.endsWith('.html')
       ? 'text/html; charset=utf-8'
       : name.endsWith('.css')
@@ -169,10 +174,6 @@ export class DashboardServer {
       throw new Error('request body must be a JSON object');
     }
     return parsed as Record<string, unknown>;
-  }
-
-  private compact(state: DashboardState): DashboardState {
-    return { ...state, amplitudeProfile: [], scores: {} };
   }
 
   private sendJson(response: ServerResponse, status: number, value: unknown): void {
