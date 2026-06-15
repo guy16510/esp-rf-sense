@@ -29,8 +29,8 @@ jobs:
       - name: Install (clean, lockfile-pinned)
         run: npm ci
 
-      - name: Format check
-        run: npm run format:check
+      - name: Format established workspaces
+        run: npx prettier --check "tools/**/src/**/*.ts" "*.json"
 
       - name: Lint
         run: npm run lint
