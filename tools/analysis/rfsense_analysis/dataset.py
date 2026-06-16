@@ -1,12 +1,8 @@
-"""Load a directory of experiment sessions into a feature table with per-window provenance.
+"""Load experiment sessions into a feature table with per-window provenance and targets.
 
-A session directory contains `*.session.json` files (the experiment metadata) alongside the
-collector recordings they reference. This module turns that into an (X, samples) feature table
-where every window carries the recording/person/position/day it came from -- the provenance the
-group-aware cross-validation in `splits` and the live model both depend on.
-
-Shared by `rfsense-evaluate`, `rfsense-train`, and the live viewer so they all build features the
-same way.
+Every window remains tied to its recording/person/position/day so group-aware evaluation cannot
+leak adjacent samples. Richer scene targets are retained as aligned arrays for count, movement,
+orientation, pose, room, and kind models used by the interactive dashboard.
 """
 
 from __future__ import annotations
@@ -26,14 +22,32 @@ from .splits import Sample
 
 @dataclass
 class LoadedDataset:
-    x: np.ndarray  # (n_windows, n_features)
-    samples: list[Sample]  # one per window, in row order
-    position_coords: dict[str, dict] = field(default_factory=dict)  # position label -> {"x","y"}
+    x: np.ndarray
+    samples: list[Sample]
+    position_coords: dict[str, dict] = field(default_factory=dict)
+    targets: dict[str, list[str]] = field(default_factory=dict)
     n_sessions: int = 0
 
     @property
     def labels(self) -> list[str]:
         return [s.label for s in self.samples]
+
+    def target_table(self, target: str) -> tuple[np.ndarray, list[str]]:
+        """Return feature rows and non-empty labels for one supported model target."""
+
+        normalized = target.lower().replace("-", "_")
+        if normalized == "label":
+            values = self.labels
+        elif normalized == "position":
+            values = [s.position for s in self.samples]
+        else:
+            values = self.targets.get(normalized, [])
+        if len(values) != self.x.shape[0]:
+            raise SystemExit(f"target '{target}' is unavailable or misaligned with feature rows")
+        mask = np.array([bool(str(value).strip()) for value in values], dtype=bool)
+        if not np.any(mask):
+            raise SystemExit(f"target '{target}' has no populated values in the session metadata")
+        return self.x[mask], [str(value) for value, keep in zip(values, mask, strict=True) if keep]
 
 
 def _read_recording(path: Path) -> list[proto.Datagram]:
@@ -45,7 +59,6 @@ def _read_recording(path: Path) -> list[proto.Datagram]:
 
 
 def matrix_for(datagrams: list[proto.Datagram]) -> tuple[np.ndarray, np.ndarray]:
-    """(timestamps_us, complex csi matrix) for all frames across the given datagrams."""
     frames = list(proto.iter_frames(iter(datagrams)))
     return csi_mod.frames_to_matrix(frames)
 
@@ -57,6 +70,21 @@ def _position(session: dict) -> tuple[str, float | None, float | None]:
     return "", None, None
 
 
+def _session_targets(session: dict, position: str) -> dict[str, str]:
+    subject = session.get("subject") or {}
+    count = subject.get("count")
+    return {
+        "count": "" if count is None else str(count),
+        "movement": str(subject.get("movement") or ""),
+        "orientation": str(subject.get("orientation") or ""),
+        "pose": str(subject.get("pose") or ""),
+        "kind": str(subject.get("kind") or "person" if (count or 0) > 0 else ""),
+        "room": str(session.get("room") or ""),
+        "position": position,
+        "label": str(session.get("label") or ""),
+    }
+
+
 def load_session_dir(
     session_dir: str | Path,
     *,
@@ -65,11 +93,8 @@ def load_session_dir(
     feature: str = "amplitude",
     on_skip: Callable[[str], None] | None = None,
 ) -> LoadedDataset:
-    """Build a feature table from every session whose recording is present and long enough.
+    """Build a feature table from every complete session with a usable recording."""
 
-    `feature` is "amplitude" or "phase" (sanitized). `on_skip(message)` is called for each session
-    that is skipped (missing recording, no usable frames, too short) so callers can report it.
-    """
     session_dir = Path(session_dir)
     sessions = sorted(session_dir.glob("*.session.json"))
     if not sessions:
@@ -79,6 +104,16 @@ def load_session_dir(
     x_blocks: list[np.ndarray] = []
     samples: list[Sample] = []
     position_coords: dict[str, dict] = {}
+    targets: dict[str, list[str]] = {
+        "count": [],
+        "movement": [],
+        "orientation": [],
+        "pose": [],
+        "kind": [],
+        "room": [],
+        "position": [],
+        "label": [],
+    }
     used = 0
 
     for sp in sessions:
@@ -122,6 +157,9 @@ def load_session_dir(
         )
         x_blocks.append(x)
         samples.extend([sample] * x.shape[0])
+        values = _session_targets(session, pos_label)
+        for key in targets:
+            targets[key].extend([values[key]] * x.shape[0])
         used += 1
 
     if not x_blocks:
@@ -130,5 +168,6 @@ def load_session_dir(
         x=np.vstack(x_blocks),
         samples=samples,
         position_coords=position_coords,
+        targets=targets,
         n_sessions=used,
     )

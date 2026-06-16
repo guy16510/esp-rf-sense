@@ -1,14 +1,4 @@
-"""Command-line entry points for the analysis package.
-
-  rfsense-parse     summarize a recording (.csi.bin or .jsonl): frames, subcarriers, loss-ish stats
-  rfsense-features  extract windowed features from one recording into a .npz
-  rfsense-evaluate  build a feature table from a directory of experiment sessions and run
-                    leave-one-{person,position,day}-out classical-ML baselines
-  rfsense-train     fit one classifier on ALL sessions and save a live-model bundle (display only)
-  rfsense-live      serve the live web view from UDP or a recording replay
-
-These are thin wrappers; all real logic lives in the importable modules so it can be unit-tested.
-"""
+"""Command-line entry points for the RF-Sense analysis package."""
 
 from __future__ import annotations
 
@@ -41,7 +31,6 @@ def parse_main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Summarize a CSI recording.")
     ap.add_argument("recording", help="path to a .csi.bin or .jsonl recording")
     args = ap.parse_args(argv)
-
     datagrams = _read_recording(Path(args.recording))
     timestamps, matrix = _matrix_for(datagrams)
     n_frames, n_sub = matrix.shape if matrix.size else (0, 0)
@@ -49,7 +38,6 @@ def parse_main(argv: list[str] | None = None) -> int:
     boots = {(dg.header.device_id, dg.header.boot_id) for dg in datagrams}
     span_us = int(timestamps[-1] - timestamps[0]) if timestamps.size > 1 else 0
     rate = (n_frames - 1) / (span_us / 1e6) if span_us > 0 else 0.0
-
     print(f"datagrams:        {len(datagrams)}")
     print(f"usable frames:    {n_frames}")
     print(f"subcarriers:      {n_sub}")
@@ -72,7 +60,6 @@ def features_main(argv: list[str] | None = None) -> int:
     ap.add_argument("--phase", action="store_true", help="use sanitized phase instead of amplitude")
     ap.add_argument("--out", required=True, help="output .npz path")
     args = ap.parse_args(argv)
-
     datagrams = _read_recording(Path(args.recording))
     _, matrix = _matrix_for(datagrams)
     if matrix.size == 0:
@@ -103,7 +90,6 @@ def evaluate_main(argv: list[str] | None = None) -> int:
         "--models", default="all", help="comma-separated subset of model names, or 'all'"
     )
     args = ap.parse_args(argv)
-
     ds = dataset_mod.load_session_dir(
         args.session_dir,
         window=args.window,
@@ -116,7 +102,6 @@ def evaluate_main(argv: list[str] | None = None) -> int:
         f"feature table: {ds.x.shape[0]} windows x {ds.x.shape[1]} features, "
         f"{len(set(y_all))} classes, {ds.n_sessions} session(s)\n"
     )
-
     all_models = models_mod.make_models()
     chosen = (
         all_models
@@ -125,7 +110,6 @@ def evaluate_main(argv: list[str] | None = None) -> int:
     )
     if not chosen:
         raise SystemExit(f"no valid models selected; available: {', '.join(all_models)}")
-
     for name, model in chosen.items():
         report = models_mod.evaluate_group_cv(
             ds.x, y_all, ds.samples, group_key=args.group, model_name=name, model=model
@@ -135,32 +119,31 @@ def evaluate_main(argv: list[str] | None = None) -> int:
 
 
 def train_main(argv: list[str] | None = None) -> int:
+    from .scene_model import SUPPORTED_TARGETS
+
     ap = argparse.ArgumentParser(
-        description="Fit one classifier on ALL sessions and save a live-model bundle. "
-        "This bundle is for the live display only -- it has seen every recording, so it must "
-        "NOT be used to report accuracy. Headline accuracy comes from rfsense-evaluate.",
+        description="Fit a classifier for the live scene display. Report accuracy only with "
+        "rfsense-evaluate and proper group-aware holdouts."
     )
     ap.add_argument("session_dir", help="directory containing *.session.json + matching recordings")
     ap.add_argument("--out", required=True, help="output live-model bundle path (.joblib)")
     ap.add_argument(
         "--target",
-        choices=["position", "label"],
+        choices=sorted(SUPPORTED_TARGETS),
         default="position",
-        help="predict coarse zone (position) or experiment class (label)",
+        help="scene attribute to predict for the live dashboard",
     )
     ap.add_argument("--model", default="random_forest", help="model name from rfsense models")
     ap.add_argument("--window", type=int, default=64)
     ap.add_argument("--step", type=int, default=32)
     ap.add_argument("--phase", action="store_true", help="use sanitized phase instead of amplitude")
     args = ap.parse_args(argv)
-
-    from . import livemodel
-
+    from . import livemodel, scene_model
     feature = "phase" if args.phase else "amplitude"
     ds = dataset_mod.load_session_dir(
         args.session_dir, window=args.window, step=args.step, feature=feature, on_skip=print
     )
-    bundle = livemodel.train_model(
+    bundle = scene_model.train_scene_model(
         ds,
         target=args.target,
         model_name=args.model,
@@ -178,8 +161,12 @@ def train_main(argv: list[str] | None = None) -> int:
 
 
 def live_main(argv: list[str] | None = None) -> int:
-    from . import live
+    from . import dashboard
+    return dashboard.main(argv)
 
+
+def legacy_live_main(argv: list[str] | None = None) -> int:
+    from . import live
     return live.main(argv)
 
 

@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist"
+  },
+  "files": [
+    "src/contracts.ts",
+    "src/events.ts",
+    "src/node-engine.ts",
+    "src/node-server.ts",
+    "src/numeric-features.ts",
+    "src/protocol.ts",
+    "src/ring-buffer.ts",
+    "src/run.ts"
+  ]
+}

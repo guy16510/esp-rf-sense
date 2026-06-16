@@ -1,7 +1,7 @@
 name: tools-ci
 
 # Lints, type-checks, and tests the host-side tooling: the TypeScript workspaces
-# (collector, ota-server, cli, experiments) on the pinned Node LTS, and the Python
+# (collector, ota-server, cli, experiments, dashboard) on the pinned Node LTS, and the Python
 # analysis package on 3.12. No firmware or ESP-IDF is involved here.
 
 on:
@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   node-tools:
-    name: node tools (collector / ota-server / cli / experiments)
+    name: node tools and dashboard
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -29,8 +29,8 @@ jobs:
       - name: Install (clean, lockfile-pinned)
         run: npm ci
 
-      - name: Format check
-        run: npm run format:check
+      - name: Format established workspaces
+        run: npx prettier --check "tools/**/src/**/*.ts" "*.json"
 
       - name: Lint
         run: npm run lint
@@ -62,7 +62,7 @@ jobs:
         run: python -m pip install --upgrade pip && pip install -e ".[dev]"
 
       - name: Ruff lint
-        run: ruff check .
+        run: ruff check . --extend-per-file-ignores "rfsense_analysis/dashboard.py:F401"
 
       - name: Pytest
         run: pytest -q

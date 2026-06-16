@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "rfsense-analysis"
 version = "0.1.0"
-description = "Offline CSI analysis: parsing, DSP, features, and group-aware classical ML for device-free sensing."
+description = "Offline CSI analysis, feature extraction, evaluation, and model development."
 requires-python = ">=3.12"
 dependencies = [
     "numpy>=1.26",
@@ -23,7 +23,6 @@ rfsense-parse = "rfsense_analysis.cli:parse_main"
 rfsense-features = "rfsense_analysis.cli:features_main"
 rfsense-evaluate = "rfsense_analysis.cli:evaluate_main"
 rfsense-train = "rfsense_analysis.cli:train_main"
-rfsense-live = "rfsense_analysis.cli:live_main"
 
 [tool.setuptools.packages.find]
 where = ["."]
