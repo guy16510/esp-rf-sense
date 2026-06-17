@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { fileURLToPath } from 'node:url';
 
-import type { DashboardState, DeviceLogEntry } from './contracts.js';
+import type { DashboardState, DeviceLogEntry, DeviceTelemetry } from './contracts.js';
 import { EventStore } from './events.js';
 import type { RealtimeEngine } from './engine.js';
 
@@ -20,6 +20,14 @@ const STATIC_FILES = new Map([
   ['/boot.js', 'boot.js'],
 ]);
 
+const CONTROL_PATHS: Record<string, string> = {
+  'capture-start': '/api/v1/capture/start',
+  'capture-stop': '/api/v1/capture/stop',
+  'ota-check': '/api/v1/ota/check',
+  'ota-apply': '/api/v1/ota/apply',
+  reboot: '/api/v1/reboot',
+};
+
 export interface DashboardServerOptions {
   host: string;
   port: number;
@@ -34,19 +42,25 @@ export class DashboardServer {
   private readonly clients = new Set<ServerResponse>();
   private readonly server: Server;
   private timer: NodeJS.Timeout | null = null;
-  private logTimer: NodeJS.Timeout | null = null;
-  private logPollActive = false;
+  private deviceTimer: NodeJS.Timeout | null = null;
+  private polling = false;
   private lastLogSequence = 0;
   private state: DashboardState;
+  private device: DeviceTelemetry = {
+    connected: false,
+    lastUpdated: null,
+    error: null,
+    status: null,
+    health: null,
+    config: null,
+  };
 
   constructor(
     private readonly engine: RealtimeEngine,
     private readonly options: DashboardServerOptions,
   ) {
     this.state = engine.snapshot();
-    this.server = createServer((request, response) => {
-      void this.handle(request, response);
-    });
+    this.server = createServer((request, response) => void this.handle(request, response));
   }
 
   async start(): Promise<void> {
@@ -60,15 +74,15 @@ export class DashboardServer {
     this.timer = setInterval(() => this.publish(), this.options.intervalMs);
     this.timer.unref();
     if (this.options.deviceUrl) {
-      this.logTimer = setInterval(() => void this.pollLogs(), 1000);
-      this.logTimer.unref();
-      void this.pollLogs();
+      this.deviceTimer = setInterval(() => void this.pollDevice(), 1500);
+      this.deviceTimer.unref();
+      void this.pollDevice();
     }
   }
 
   async stop(): Promise<void> {
     if (this.timer) clearInterval(this.timer);
-    if (this.logTimer) clearInterval(this.logTimer);
+    if (this.deviceTimer) clearInterval(this.deviceTimer);
     for (const client of this.clients) client.end();
     await new Promise<void>((resolve) => this.server.close(() => resolve()));
   }
@@ -77,34 +91,67 @@ export class DashboardServer {
     this.state = this.engine.snapshot();
     this.history.push({ ...this.state, amplitudeProfile: [], scores: {} });
     if (this.history.length > 1800) this.history.shift();
-    const payload = JSON.stringify(this.state);
-    for (const client of this.clients) client.write(`event: state\ndata: ${payload}\n\n`);
+    this.broadcast('state', this.state);
+  }
+
+  private async pollDevice(): Promise<void> {
+    if (!this.options.deviceUrl || this.polling) return;
+    this.polling = true;
+    try {
+      const [status, health, config] = await Promise.all([
+        this.deviceJson('/api/v1/status'),
+        this.deviceJson('/api/v1/health'),
+        this.deviceJson('/api/v1/config'),
+      ]);
+      this.device = {
+        connected: true,
+        lastUpdated: Date.now() / 1000,
+        error: null,
+        status,
+        health,
+        config,
+      };
+      await this.pollLogs();
+    } catch (error) {
+      this.device = {
+        ...this.device,
+        connected: false,
+        lastUpdated: Date.now() / 1000,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    } finally {
+      this.polling = false;
+      this.broadcast('device', this.device);
+    }
   }
 
   private async pollLogs(): Promise<void> {
-    if (!this.options.deviceUrl) return;
-    if (this.logPollActive) return;
-    this.logPollActive = true;
-    try {
-      const url = new URL('/api/v1/logs', this.options.deviceUrl);
-      url.searchParams.set('after', String(this.lastLogSequence));
-      url.searchParams.set('limit', '80');
-      const response = await fetch(url, { signal: AbortSignal.timeout(1500) });
-      if (!response.ok) return;
-      const payload = (await response.json()) as { entries?: DeviceLogEntry[] };
-      for (const entry of payload.entries ?? []) {
-        if (entry.sequence <= this.lastLogSequence) continue;
-        this.lastLogSequence = Math.max(this.lastLogSequence, entry.sequence);
-        this.logs.push(entry);
-        if (this.logs.length > 300) this.logs.shift();
-        const data = JSON.stringify(entry);
-        for (const client of this.clients) client.write(`event: log\ndata: ${data}\n\n`);
-      }
-    } catch {
-      // The device may reboot or be temporarily unreachable; state streaming should continue.
-    } finally {
-      this.logPollActive = false;
+    const path = `/api/v1/logs?after=${this.lastLogSequence}&limit=80`;
+    const payload = (await this.deviceJson(path)) as { entries?: DeviceLogEntry[] };
+    for (const entry of payload.entries ?? []) {
+      if (entry.sequence <= this.lastLogSequence) continue;
+      this.lastLogSequence = Math.max(this.lastLogSequence, entry.sequence);
+      this.logs.push(entry);
+      if (this.logs.length > 300) this.logs.shift();
+      this.broadcast('log', entry);
     }
+  }
+
+  private async deviceJson(path: string, init?: RequestInit): Promise<Record<string, unknown>> {
+    if (!this.options.deviceUrl) throw new Error('dashboard was started without --device');
+    const response = await fetch(new URL(path, this.options.deviceUrl), {
+      ...init,
+      signal: AbortSignal.timeout(2500),
+    });
+    const text = await response.text();
+    const value = text ? (JSON.parse(text) as Record<string, unknown>) : {};
+    if (!response.ok) throw new Error(String(value.error ?? `device HTTP ${response.status}`));
+    return value;
+  }
+
+  private broadcast(event: string, value: unknown): void {
+    const payload = JSON.stringify(value);
+    for (const client of this.clients) client.write(`event: ${event}\ndata: ${payload}\n\n`);
   }
 
   private async handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
@@ -118,14 +165,14 @@ export class DashboardServer {
         this.sendJson(response, 200, this.state);
         return;
       }
+      if (request.method === 'GET' && url.pathname === '/api/device') {
+        this.sendJson(response, 200, this.device);
+        return;
+      }
       if (request.method === 'GET' && url.pathname === '/api/history') {
         const seconds = Math.min(600, Math.max(1, Number(url.searchParams.get('seconds') ?? 120)));
         const cutoff = Date.now() / 1000 - seconds;
-        this.sendJson(
-          response,
-          200,
-          this.history.filter((item) => item.timestamp >= cutoff),
-        );
+        this.sendJson(response, 200, this.history.filter((item) => item.timestamp >= cutoff));
         return;
       }
       if (request.method === 'GET' && url.pathname === '/api/meta') {
@@ -134,15 +181,15 @@ export class DashboardServer {
           target: 'presence',
           zones: {},
           capabilities: {
-            sceneHypotheses: true,
+            rfDisturbance: true,
+            coarseTrainedZone: false,
             peopleCount: false,
             pose: false,
             orientation: false,
-            coarseDirection: false,
-            campaignMarkers: true,
-            history: true,
+            exactLocation: false,
+            distance: false,
           },
-          disclaimer: 'The display shows anonymous aggregate RF activity with uncertainty.',
+          disclaimer: 'A single RF link shows anonymous signal disturbance, not a measured person location.',
         });
         return;
       }
@@ -156,6 +203,21 @@ export class DashboardServer {
           latestSequence: this.lastLogSequence,
           entries: this.logs,
         });
+        return;
+      }
+      if (request.method === 'POST' && url.pathname === '/api/baseline/reset') {
+        this.engine.resetBaseline();
+        this.sendJson(response, 200, { reset: true });
+        return;
+      }
+      if (request.method === 'POST' && url.pathname === '/api/control') {
+        const body = await this.readBody(request);
+        const action = String(body.action ?? '');
+        const path = CONTROL_PATHS[action];
+        if (!path) throw new Error(`unsupported device action: ${action}`);
+        const result = await this.deviceJson(path, { method: 'POST' });
+        this.sendJson(response, 200, result);
+        setTimeout(() => void this.pollDevice(), 300).unref();
         return;
       }
       if (request.method === 'POST' && url.pathname === '/api/events') {
@@ -189,6 +251,7 @@ export class DashboardServer {
       'X-Accel-Buffering': 'no',
     });
     response.write(`event: state\ndata: ${JSON.stringify(this.state)}\n\n`);
+    response.write(`event: device\ndata: ${JSON.stringify(this.device)}\n\n`);
     this.clients.add(response);
     response.on('close', () => this.clients.delete(response));
   }
