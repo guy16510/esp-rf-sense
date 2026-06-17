@@ -16,12 +16,13 @@ export class RealtimeEngine {
   private readonly input: InputBuffer;
   private readonly classifier: ActivityClassifier;
   private latestKey: string | null = null;
-  private latestResult = this.classifierResultWaiting();
+  private latestResult;
 
   constructor(options: EngineOptions = {}) {
     this.windowFrames = Math.max(8, Math.floor(options.windowFrames ?? 64));
     this.input = new InputBuffer(this.windowFrames * 8);
     this.classifier = new ActivityClassifier(options.model, options.motionThreshold);
+    this.latestResult = this.classifier.evaluate([]);
   }
 
   accept(datagram: CsiDatagram, receivedAtMs: number): void {
@@ -30,6 +31,12 @@ export class RealtimeEngine {
 
   recordInvalid(): void {
     this.input.recordInvalid();
+  }
+
+  resetBaseline(): void {
+    this.classifier.reset();
+    this.latestKey = null;
+    this.latestResult = this.classifier.evaluate([]);
   }
 
   snapshot(nowMs = Date.now()): DashboardState {
@@ -46,17 +53,15 @@ export class RealtimeEngine {
       timestamp: nowMs / 1000,
       ...this.latestResult,
       bubbles: active
-        ? [
-            {
-              id: 'activity-0',
-              x: 0.5,
-              y: 0.5,
-              radius: Number((0.08 + this.latestResult.confidence * 0.08).toFixed(4)),
-              confidence: this.latestResult.confidence,
-              motion: this.latestResult.motion,
-              zone: this.latestResult.zone,
-            },
-          ]
+        ? [{
+            id: 'rf-disturbance',
+            x: 0.5,
+            y: 0.5,
+            radius: Number((0.08 + this.latestResult.confidence * 0.08).toFixed(4)),
+            confidence: this.latestResult.confidence,
+            motion: this.latestResult.motion,
+            zone: this.latestResult.zone,
+          }]
         : [],
       amplitudeProfile: amplitudeProfile(frames.map((frame) => frame.amplitude)),
       frameRateHz: frameRate(frames),
@@ -69,21 +74,13 @@ export class RealtimeEngine {
       invalidDatagrams: metrics.invalidDatagrams,
     };
   }
-
-  private classifierResultWaiting() {
-    return {
-      state: 'waiting' as const,
-      confidence: 0,
-      motion: 0,
-      zone: null,
-      mode: 'heuristic' as const,
-      scores: {} as Record<string, number>,
-    };
-  }
 }
 
 function frameRate(frames: readonly { timestampUs: number }[]): number {
   if (frames.length < 2) return 0;
-  const spanUs = frames.at(-1)!.timestampUs - frames[0]!.timestampUs;
-  return spanUs > 0 ? Number((((frames.length - 1) * 1_000_000) / spanUs).toFixed(1)) : 0;
+  const first = frames[0];
+  const last = frames[frames.length - 1];
+  if (!first || !last) return 0;
+  const spanUs = last.timestampUs - first.timestampUs;
+  return spanUs > 0 ? Number((((frames.length - 1) * 1000000) / spanUs).toFixed(1)) : 0;
 }
