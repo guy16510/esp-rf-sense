@@ -45,16 +45,24 @@ export class ActivityClassifier {
       };
     }
 
-    if (this.threshold === undefined && this.samples < REQUIRED) {
+    if (this.threshold !== undefined) {
+      const score = clamp(motion / (this.threshold * 2));
+      this.active = score >= 0.5;
+      return this.result(
+        this.active ? 'active' : 'clear',
+        this.active ? score : 1 - score,
+        motion,
+        score,
+      );
+    }
+
+    if (this.samples < REQUIRED) {
       this.learn(motion, 0.18);
       this.samples++;
       return this.result('baseline', this.samples / REQUIRED, motion, 0);
     }
 
-    const score = this.threshold === undefined
-      ? this.adaptiveScore(motion)
-      : clamp(motion / (this.threshold * 2));
-
+    const score = this.adaptiveScore(motion);
     if (score >= 0.65) {
       this.activeVotes++;
       this.clearVotes = 0;
@@ -64,9 +72,14 @@ export class ActivityClassifier {
     }
     if (this.activeVotes >= 2) this.active = true;
     if (this.clearVotes >= 4) this.active = false;
-    if (!this.active && score < 0.2 && this.threshold === undefined) this.learn(motion, 0.025);
+    if (!this.active && score < 0.2) this.learn(motion, 0.025);
 
-    return this.result(this.active ? 'active' : 'clear', this.active ? score : 1 - score, motion, score);
+    return this.result(
+      this.active ? 'active' : 'clear',
+      this.active ? score : 1 - score,
+      motion,
+      score,
+    );
   }
 
   reset(): void {
@@ -92,7 +105,12 @@ export class ActivityClassifier {
     this.variance = (1 - alpha) * (this.variance + alpha * delta * delta);
   }
 
-  private result(state: ActivityState, confidence: number, motion: number, score: number): ActivityResult {
+  private result(
+    state: ActivityState,
+    confidence: number,
+    motion: number,
+    score: number,
+  ): ActivityResult {
     return {
       state,
       confidence: clamp(confidence),
