@@ -71,7 +71,6 @@ collector's metadata sidecar and the device's `/health`.
 
 ```bash
 export RF_SENSE_DEVICE=rf-sense-a1b2.local
-export RF_SENSE_TOKEN=...
 
 npm run experiment:start -- \
   --template stationary --experiment-id occupancy-room-A --room "room A" \
@@ -80,8 +79,7 @@ npm run experiment:status
 npm run experiment:stop
 ```
 
-The admin token is passed to the spawned collector as an argument array (never through a shell),
-so it does not leak into shell history or process listings.
+The spawned collector receives device parameters as an argument array, not through a shell.
 
 ## Designing a credible dataset
 

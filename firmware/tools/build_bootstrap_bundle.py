@@ -156,7 +156,7 @@ cat <<'EOF'
 
 Done. The device now boots unprovisioned and exposes a Wi-Fi access point named
 RF-Sense-XXXX (XXXX = last two MAC bytes). Join it and open http://192.168.4.1 to set the
-Wi-Fi SSID/password, collector host, OTA manifest URL, and admin token. All later firmware
+Wi-Fi SSID/password, collector host, and OTA manifest URL. All later firmware
 updates are delivered over HTTPS OTA -- no USB needed.
 EOF
 """

@@ -11,7 +11,6 @@ DeviceConfig goodConfig() {
   DeviceConfig c{};
   std::strcpy(c.wifiSsid, "mynet");
   std::strcpy(c.wifiPassword, "password123");
-  std::strcpy(c.adminToken, "0123456789abcdef0");  // 17 chars (>= 16)
   std::strcpy(c.collectorHost, "192.168.1.50");
   std::strcpy(c.otaManifestUrl, "https://ota.local/manifest/stable.json");
   c.collectorPort = 5566;
@@ -36,7 +35,6 @@ int main() {
   CHECK(ConfigCodec::decode(blob, n, d));
   CHECK(std::strcmp(d.wifiSsid, c.wifiSsid) == 0);
   CHECK(std::strcmp(d.wifiPassword, c.wifiPassword) == 0);
-  CHECK(std::strcmp(d.adminToken, c.adminToken) == 0);
   CHECK(std::strcmp(d.otaManifestUrl, c.otaManifestUrl) == 0);
   CHECK(d.collectorPort == 5566);
   CHECK(d.captureMode == 0);
@@ -52,10 +50,6 @@ int main() {
 
   // Validation rejects.
   DeviceConfig bad = c;
-  bad.adminToken[0] = '\0';
-  CHECK(!ConfigCodec::validate(bad, &err));
-
-  bad = c;
   std::strcpy(bad.wifiPassword, "short");  // < 8 chars
   CHECK(!ConfigCodec::validate(bad, &err));
 
@@ -86,7 +80,7 @@ int main() {
   bad.otaManifestUrl[0] = '\0';
   CHECK(ConfigCodec::validate(bad, &err));
 
-  // isComplete needs provisioned + ssid + token.
+  // isComplete needs provisioned + ssid.
   CHECK(ConfigCodec::isComplete(c));
   DeviceConfig incomplete = c;
   incomplete.provisioned = false;

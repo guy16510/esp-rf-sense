@@ -62,7 +62,7 @@ surfaced in health telemetry so a recording's quality is auditable.
 
 | Component | Responsibility |
 |---|---|
-| `config_store` | NVS-backed config + admin token; never logs secrets |
+| `config_store` | NVS-backed config; never logs secrets |
 | `wifi_manager` | STA connect/reconnect, RSSI, Wi-Fi events |
 | `provisioning` | headless SoftAP + minimal setup page |
 | `csi_capture` | `esp_wifi_set_csi*`, ISR-safe callback → bounded pool |

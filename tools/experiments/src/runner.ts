@@ -132,8 +132,6 @@ function spawnCollector(opts: StartOptions, recordingName: string) {
     '--device',
     opts.device.baseUrl,
   ];
-  if (opts.device.token) args.push('--token', opts.device.token);
-  // shell:false + explicit arg array: the token never passes through a shell, so no injection.
   return spawn('npx', args, { stdio: ['ignore', 'inherit', 'inherit'], shell: false });
 }
 

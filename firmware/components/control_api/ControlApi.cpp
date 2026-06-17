@@ -20,35 +20,6 @@ constexpr size_t kMaxBodyLen = 1536;
 
 ControlApi* selfOf(httpd_req_t* req) { return static_cast<ControlApi*>(req->user_ctx); }
 
-// Length-checked, data-independent string compare for the admin token. An empty configured
-// token fails closed (no mutating access until provisioned).
-bool tokenEquals(const char* configured, const char* presented) {
-  if (!configured || !presented) return false;
-  const size_t lc = std::strlen(configured);
-  const size_t lp = std::strlen(presented);
-  if (lc == 0) return false;
-  unsigned char diff = static_cast<unsigned char>(lc ^ lp);
-  const size_t n = lc < lp ? lc : lp;
-  for (size_t i = 0; i < n; ++i) {
-    diff |= static_cast<unsigned char>(configured[i] ^ presented[i]);
-  }
-  return diff == 0 && lc == lp;
-}
-
-bool authorize(httpd_req_t* req) {
-  const DeviceConfig cfg = ConfigStore::instance().get();
-  char hdr[80] = {0};
-  if (httpd_req_get_hdr_value_str(req, "X-Device-Token", hdr, sizeof(hdr)) == ESP_OK) {
-    return tokenEquals(cfg.adminToken, hdr);
-  }
-  if (httpd_req_get_hdr_value_str(req, "Authorization", hdr, sizeof(hdr)) == ESP_OK) {
-    const char* p = hdr;
-    if (std::strncmp(p, "Bearer ", 7) == 0) p += 7;
-    return tokenEquals(cfg.adminToken, p);
-  }
-  return false;
-}
-
 esp_err_t sendJson(httpd_req_t* req, cJSON* root, const char* status) {
   char* out = cJSON_PrintUnformatted(root);
   cJSON_Delete(root);
@@ -187,7 +158,6 @@ esp_err_t configGet(httpd_req_t* req) {
   cJSON_AddStringToObject(root, "otaChannel", c.otaChannel);
   cJSON_AddStringToObject(root, "collectorHost", c.collectorHost);
   cJSON_AddNumberToObject(root, "collectorPort", c.collectorPort);
-  cJSON_AddBoolToObject(root, "adminTokenSet", c.adminToken[0] != '\0');
   cJSON_AddNumberToObject(root, "captureMode", c.captureMode);
   cJSON_AddNumberToObject(root, "pingPps", c.pingPps);
   cJSON_AddNumberToObject(root, "pingPayloadBytes", c.pingPayloadBytes);
@@ -223,7 +193,6 @@ void overlayBool(cJSON* root, const char* key, bool& dst) {
 }
 
 esp_err_t configPost(httpd_req_t* req) {
-  if (!authorize(req)) return sendError(req, "401 Unauthorized", "missing or invalid token");
   char body[kMaxBodyLen];
   if (readBody(req, body, sizeof(body)) < 0) return sendError(req, "400 Bad Request", "body too large");
   cJSON* root = cJSON_Parse(body);
@@ -236,7 +205,6 @@ esp_err_t configPost(httpd_req_t* req) {
   overlayString(root, "otaChannel", c.otaChannel, sizeof(c.otaChannel));
   overlayString(root, "collectorHost", c.collectorHost, sizeof(c.collectorHost));
   overlayU16(root, "collectorPort", c.collectorPort);
-  overlayString(root, "adminToken", c.adminToken, sizeof(c.adminToken));
   overlayString(root, "deviceName", c.deviceName, sizeof(c.deviceName));
   uint16_t mode = c.captureMode;
   overlayU16(root, "captureMode", mode);
@@ -250,7 +218,7 @@ esp_err_t configPost(httpd_req_t* req) {
   overlayBool(root, "otaAutoApply", c.otaAutoApply);
   cJSON_Delete(root);
 
-  if (c.wifiSsid[0] != '\0' && c.collectorHost[0] != '\0' && c.adminToken[0] != '\0') {
+  if (c.wifiSsid[0] != '\0' && c.collectorHost[0] != '\0') {
     c.provisioned = true;
   }
   esp_err_t err = ConfigStore::instance().save(c);
@@ -262,7 +230,6 @@ esp_err_t configPost(httpd_req_t* req) {
 }
 
 esp_err_t captureStartPost(httpd_req_t* req) {
-  if (!authorize(req)) return sendError(req, "401 Unauthorized", "missing or invalid token");
   ControlApi* self = selfOf(req);
   const bool ok = self && self->hooksStartCapture();
   cJSON* root = cJSON_CreateObject();
@@ -271,7 +238,6 @@ esp_err_t captureStartPost(httpd_req_t* req) {
 }
 
 esp_err_t captureStopPost(httpd_req_t* req) {
-  if (!authorize(req)) return sendError(req, "401 Unauthorized", "missing or invalid token");
   ControlApi* self = selfOf(req);
   const bool ok = self && self->hooksStopCapture();
   cJSON* root = cJSON_CreateObject();
@@ -280,7 +246,6 @@ esp_err_t captureStopPost(httpd_req_t* req) {
 }
 
 esp_err_t otaCheckPost(httpd_req_t* req) {
-  if (!authorize(req)) return sendError(req, "401 Unauthorized", "missing or invalid token");
   const DeviceConfig c = ConfigStore::instance().get();
   if (c.otaManifestUrl[0] == '\0') return sendError(req, "400 Bad Request", "no manifest url");
   const bool available = OtaManager::instance().check(c.otaManifestUrl);
@@ -294,7 +259,6 @@ esp_err_t otaCheckPost(httpd_req_t* req) {
 }
 
 esp_err_t otaApplyPost(httpd_req_t* req) {
-  if (!authorize(req)) return sendError(req, "401 Unauthorized", "missing or invalid token");
   const OtaStatus s = OtaManager::instance().status();
   if (!s.updateAvailable) return sendError(req, "409 Conflict", "no validated update; run check first");
   if (OtaManager::instance().isBusy()) return sendError(req, "409 Conflict", "ota in progress");
@@ -306,7 +270,6 @@ esp_err_t otaApplyPost(httpd_req_t* req) {
 }
 
 esp_err_t rebootPost(httpd_req_t* req) {
-  if (!authorize(req)) return sendError(req, "401 Unauthorized", "missing or invalid token");
   xTaskCreate(deferredRebootTask, "reboot", 2048, nullptr, 5, nullptr);
   cJSON* root = cJSON_CreateObject();
   cJSON_AddBoolToObject(root, "rebooting", true);
@@ -314,7 +277,6 @@ esp_err_t rebootPost(httpd_req_t* req) {
 }
 
 esp_err_t provisioningResetPost(httpd_req_t* req) {
-  if (!authorize(req)) return sendError(req, "401 Unauthorized", "missing or invalid token");
   esp_err_t err = ConfigStore::instance().clearProvisioning();
   if (err != ESP_OK) return sendError(req, "500 Internal Server Error", "nvs clear failed");
   xTaskCreate(deferredRebootTask, "reboot", 2048, nullptr, 5, nullptr);

@@ -3,7 +3,6 @@
 // we never depend on mDNS alone, so --host always works as a fallback.
 export interface DeviceTarget {
   baseUrl: string;
-  token?: string;
   timeoutMs?: number;
 }
 
@@ -26,7 +25,6 @@ export async function apiCall(
 ): Promise<ApiResponse> {
   const url = new URL(`/api/v1${path}`, target.baseUrl).toString();
   const headers: Record<string, string> = {};
-  if (target.token) headers['X-Device-Token'] = target.token;
   if (body !== undefined) headers['Content-Type'] = 'application/json';
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), target.timeoutMs ?? 8000);
@@ -56,6 +54,5 @@ export function requireHost(flags: Map<string, string>): DeviceTarget {
     console.error('error: provide --host <hostname-or-ip> (or set RF_SENSE_DEVICE)');
     process.exit(2);
   }
-  const token = flags.get('token') ?? process.env.RF_SENSE_TOKEN;
-  return { baseUrl: resolveBaseUrl(host), ...(token ? { token } : {}) };
+  return { baseUrl: resolveBaseUrl(host) };
 }

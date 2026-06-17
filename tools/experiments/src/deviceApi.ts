@@ -2,7 +2,6 @@
 // so each workspace stays independently buildable.
 export interface DeviceTarget {
   baseUrl: string;
-  token?: string;
   timeoutMs?: number;
 }
 
@@ -18,7 +17,6 @@ export async function apiCall(
 ): Promise<{ status: number; json: unknown }> {
   const url = new URL(`/api/v1${path}`, target.baseUrl).toString();
   const headers: Record<string, string> = {};
-  if (target.token) headers['X-Device-Token'] = target.token;
   if (body !== undefined) headers['Content-Type'] = 'application/json';
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), target.timeoutMs ?? 8000);

@@ -1,6 +1,5 @@
 // Minimal HTTP control plane (esp_http_server) exposing /api/v1/*. This is an operational
-// API, not a dashboard: status/health/config reads plus a few mutating actions. Every mutating
-// endpoint requires the admin token (X-Device-Token header or "Authorization: Bearer <token>").
+// API, not a dashboard: status/health/config reads plus a few mutating actions.
 //
 // Capture coordination lives in app_main; ControlApi calls into it through hooks so this
 // component does not depend on csi_capture / ping_source / network_stream directly.

@@ -23,7 +23,7 @@ The device is **normally not USB-connected**. The USB cable is used exactly once
 1. **Bootstrap flash (USB, once)** — flash bootloader + partition table + otadata + initial app.
    See [docs/initial-bootstrap.md](docs/initial-bootstrap.md).
 2. **Wi-Fi provisioning (headless)** — the unprovisioned device raises a `RF-Sense-XXXX` SoftAP;
-   a setup page captures Wi-Fi, collector, OTA, and admin-token settings. See
+   a setup page captures Wi-Fi, collector, and OTA settings. See
    [docs/wifi-provisioning.md](docs/wifi-provisioning.md).
 3. **Run experiments** — the collector and experiment runner drive capture remotely over the
    LAN. See [docs/experiment-protocol.md](docs/experiment-protocol.md).
@@ -150,10 +150,10 @@ cd ..
 1. **Flash once over USB** (from `dist/bootstrap/`): `PORT=/dev/ttyUSB0 ./flash-bootstrap.sh`
    — see [docs/initial-bootstrap.md](docs/initial-bootstrap.md).
 2. **Provision over Wi-Fi**: join the `RF-Sense-XXXX` AP, open `http://192.168.4.1`, set SSID,
-   collector host/port, OTA URL, admin token — see [docs/wifi-provisioning.md](docs/wifi-provisioning.md).
+   collector host/port, and OTA URL — see [docs/wifi-provisioning.md](docs/wifi-provisioning.md).
 3. **Start the collector** and run an experiment session:
    ```bash
-   export RF_SENSE_DEVICE=rf-sense-a1b2.local RF_SENSE_TOKEN=...
+   export RF_SENSE_DEVICE=rf-sense-a1b2.local
    npm run device:status
    npm run collector:start -- --out ./recordings/run1            # in one shell
    npm run experiment:start -- --template stationary --experiment-id room-A \

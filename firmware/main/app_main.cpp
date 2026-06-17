@@ -40,12 +40,11 @@ namespace rfsense {
 namespace {
 constexpr char kTag[] = "app_main";
 
-// Default SoftAP password used during provisioning (WPA2 needs >= 8 chars). Operators can
-// change it by re-flashing; it only guards the one-time setup window.
+// Default SoftAP password used during provisioning. Empty means an open setup network.
 #ifdef CONFIG_RF_SENSE_CLASSIC_ESP32_EXPERIMENT
 constexpr char kProvisioningApPassword[] = "";
 #else
-constexpr char kProvisioningApPassword[] = "rfsense-setup";
+constexpr char kProvisioningApPassword[] = "";
 #endif
 
 #ifdef CONFIG_RF_SENSE_OTA_VERIFY_PERIOD_S
@@ -258,8 +257,6 @@ extern "C" void app_main() {
                  sizeof(experiment.wifiPassword) - 1);
     std::strncpy(experiment.collectorHost, "192.168.1.100",
                  sizeof(experiment.collectorHost) - 1);
-    std::strncpy(experiment.adminToken, "disposable-experiment-token",
-                 sizeof(experiment.adminToken) - 1);
     std::strncpy(experiment.deviceName, "rf-sense-experiment",
                  sizeof(experiment.deviceName) - 1);
     experiment.collectorPort = 5566;

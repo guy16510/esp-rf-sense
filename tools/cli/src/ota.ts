@@ -1,7 +1,7 @@
 // Drives OTA from an operator workstation against one device.
 //
-//   npm run device:ota:check -- --host rf-sense-a1b2.local --token <admin>
-//   npm run device:ota:apply -- --host 192.168.1.50      --token <admin>
+//   npm run device:ota:check -- --host rf-sense-a1b2.local
+//   npm run device:ota:apply -- --host 192.168.1.50
 //
 // `check` downloads + validates the manifest on the device and reports whether a newer image is
 // available. `apply` only proceeds if a validated update is pending; the device verifies SHA-256
@@ -42,7 +42,7 @@ async function main(): Promise<void> {
     process.exit(res.status === 202 ? 0 : 1);
   }
 
-  console.error('usage: ota <check|apply> --host <hostname-or-ip> [--token <admin>]');
+  console.error('usage: ota <check|apply> --host <hostname-or-ip>');
   process.exit(2);
 }
 

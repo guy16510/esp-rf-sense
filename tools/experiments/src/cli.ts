@@ -1,10 +1,10 @@
 // Entry for `npm run experiment:start|stop|status`.
 //
-//   experiment:start -- --host <ip> --token <admin> --experiment occupancy-room-A \
+//   experiment:start -- --host <ip> --experiment occupancy-room-A \
 //       --group stationary --room "Room A" --channel 6 --ping-pps 25 \
 //       --tx "Asus RT-AX55" --subjects p01 --duration 120 --out data
-//   experiment:stop   -- --host <ip> --token <admin>     # abort: tell the device to stop capture
-//   experiment:status -- --host <ip> [--token <admin>]   # device status
+//   experiment:stop   -- --host <ip>     # abort: tell the device to stop capture
+//   experiment:status -- --host <ip>     # device status
 //   experiment list-templates
 import { apiCall, resolveBaseUrl, type DeviceTarget } from './deviceApi.js';
 import { startExperiment, type StartOptions } from './runner.js';
@@ -36,8 +36,7 @@ function requireTarget(flags: Map<string, string>): DeviceTarget {
     console.error('error: --host <hostname-or-ip> required (or RF_SENSE_DEVICE)');
     process.exit(2);
   }
-  const token = flags.get('token') ?? process.env.RF_SENSE_TOKEN;
-  return { baseUrl: resolveBaseUrl(host), ...(token ? { token } : {}) };
+  return { baseUrl: resolveBaseUrl(host) };
 }
 
 function num(flags: Map<string, string>, key: string, fallback: number): number {

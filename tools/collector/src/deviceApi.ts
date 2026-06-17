@@ -1,8 +1,7 @@
 // Minimal client for the device control API (firmware/components/control_api). Uses the global
-// fetch shipped with Node 22. The admin token authorizes mutating endpoints.
+// fetch shipped with Node 22.
 export interface DeviceApiOptions {
   baseUrl: string; // e.g. http://rf-sense-a1b2.local  or  http://192.168.1.50
-  token?: string;
   timeoutMs?: number;
 }
 
@@ -14,7 +13,6 @@ async function call(
 ): Promise<{ status: number; json: unknown }> {
   const url = new URL(`/api/v1${path}`, opts.baseUrl).toString();
   const headers: Record<string, string> = {};
-  if (opts.token) headers['X-Device-Token'] = opts.token;
   if (body !== undefined) headers['Content-Type'] = 'application/json';
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? 5000);

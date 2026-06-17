@@ -20,7 +20,7 @@ struct DeviceConfig {
   uint16_t collectorPort = 5566;
 
   // Device administration.
-  char adminToken[49] = {0};  // SECRET: required for mutating API + OTA.
+  char adminToken[49] = {0};  // Legacy serialized field; ignored by current firmware.
   char deviceName[32] = {0};
 
   // Capture defaults.

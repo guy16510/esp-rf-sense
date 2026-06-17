@@ -32,10 +32,7 @@ const char kSetupPage[] =
     "<label>Collector UDP port</label><input name=collectorPort type=number value=5566>"
     "<label>OTA manifest URL (https://)</label><input name=otaManifestUrl maxlength=191>"
     "<label>OTA channel</label><input name=otaChannel value=stable maxlength=15>"
-#ifndef CONFIG_RF_SENSE_CLASSIC_ESP32_EXPERIMENT
-    "<label>Admin token (min 16 chars)</label><input name=adminToken maxlength=48 required>"
     "<label>Device name</label><input name=deviceName maxlength=31>"
-#endif
     "<label>Capture mode</label><select name=captureMode>"
     "<option value=0>controlled</option><option value=1>normal-traffic</option>"
     "<option value=2>passive</option></select>"
@@ -118,10 +115,8 @@ esp_err_t savePost(httpd_req_t* req) {
   formField(body, "otaManifestUrl", c.otaManifestUrl, sizeof(c.otaManifestUrl));
   formField(body, "otaChannel", c.otaChannel, sizeof(c.otaChannel));
 #ifdef CONFIG_RF_SENSE_CLASSIC_ESP32_EXPERIMENT
-  std::strncpy(c.adminToken, "disposable-experiment-token", sizeof(c.adminToken) - 1);
   std::strncpy(c.deviceName, "rf-sense-experiment", sizeof(c.deviceName) - 1);
 #else
-  formField(body, "adminToken", c.adminToken, sizeof(c.adminToken));
   formField(body, "deviceName", c.deviceName, sizeof(c.deviceName));
 #endif
 
@@ -143,7 +138,7 @@ esp_err_t savePost(httpd_req_t* req) {
     httpd_resp_set_status(req, "400 Bad Request");
     httpd_resp_sendstr(req,
                        "<html><body><h1>Invalid settings</h1>"
-                       "<p>Check SSID, password length (8-63), and "
+                       "<p>Check SSID, password length (empty or 8-63), and "
                        "collector host. <a href=/>Back</a></p></body></html>");
     return ESP_OK;
   }

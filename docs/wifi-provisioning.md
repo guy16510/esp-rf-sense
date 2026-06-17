@@ -14,7 +14,7 @@ first boot / cleared config
         │   join it, browse to http://192.168.4.1
         ▼
  setup page: SSID, Wi-Fi password, OTA manifest URL, OTA channel,
-             collector host/IP, collector UDP port, admin token, device name
+             collector host/IP, collector UDP port, device name
         │
         ▼
  device tests the STA connection
@@ -35,7 +35,6 @@ first boot / cleared config
 | Collector UDP port | default `5566` |
 | OTA manifest URL | e.g. `https://rf-sense-ota.local:8443/manifest/stable.json` |
 | OTA channel | `stable` or `development` |
-| Admin token | required on all mutating API calls and OTA triggers |
 | Device name | human label surfaced in `/api/v1/status` and mDNS |
 
 Defaults (applied when NVS holds no value) live in `firmware/main/AppConfig.h`:
@@ -43,12 +42,10 @@ control port `80`, collector port `5566`, ping rate `25` pps.
 
 ## Secrets handling
 
-- The Wi-Fi password and admin token are stored in NVS and **never written to any log** at any
-  level. The setup page never echoes them back.
-- `GET /api/v1/config` returns booleans `wifiPasswordSet` / `adminTokenSet` instead of the
-  secrets themselves — you can confirm a value is present without it ever leaving the device.
-- Choose a strong admin token: it authorizes capture control, OTA, reboot, and provisioning
-  reset. See [security-decisions.md](security-decisions.md).
+- The Wi-Fi password is stored in NVS and **never written to any log** at any level. The setup
+  page never echoes it back.
+- `GET /api/v1/config` returns `wifiPasswordSet` instead of the password itself — you can confirm
+  a value is present without it ever leaving the device.
 
 ## Connecting to the device afterward
 
@@ -57,7 +54,7 @@ device id, target, capture state, and OTA state. Discover it with:
 
 ```bash
 npm run device:discover
-npm run device:status -- --host rf-sense-a1b2.local --token "$RF_SENSE_TOKEN"
+npm run device:status -- --host rf-sense-a1b2.local
 ```
 
 mDNS is a convenience, never a requirement: every tool also accepts a direct IP via `--host`
@@ -68,7 +65,7 @@ DHCP.
 
 To return a device to the unprovisioned SoftAP state (e.g. moving it to a new network):
 
-- **Authenticated API:** `POST /api/v1/provisioning/reset` with the admin token.
+- **API:** `POST /api/v1/provisioning/reset`.
 - **Serial command:** over the USB console, if attached.
 - **Button hold:** a configurable button-hold, if the board exposes a usable button.
 

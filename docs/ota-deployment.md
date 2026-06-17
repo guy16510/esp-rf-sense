@@ -53,12 +53,11 @@ Updates are always explicit. There is an optional scheduled check, **disabled by
 `autoApply` is **off by default** — the device never auto-applies and never updates during an
 active experiment.
 
-From the CLI (admin token required for `apply`):
+From the CLI:
 
 ```bash
 # point at a device by mDNS name or IP
 export RF_SENSE_DEVICE=rf-sense-a1b2.local
-export RF_SENSE_TOKEN=...   # the admin token set during provisioning
 
 npm run device:ota:check    # downloads + validates the manifest, reports availability (exit 3 = none)
 npm run device:ota:apply    # re-checks, then applies; exit 0 once the device accepts (HTTP 202)
@@ -67,8 +66,8 @@ npm run device:ota:apply    # re-checks, then applies; exit 0 once the device ac
 Or directly against the API:
 
 ```
-POST /api/v1/ota/check   (admin token)
-POST /api/v1/ota/apply   (admin token)
+POST /api/v1/ota/check
+POST /api/v1/ota/apply
 ```
 
 The device's `ota` state is visible in `GET /api/v1/status`:

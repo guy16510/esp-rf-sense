@@ -1,6 +1,6 @@
 // Prints a device's status and health.
 //
-//   npm run device:status -- --host rf-sense-a1b2.local [--token <admin>] [--health]
+//   npm run device:status -- --host rf-sense-a1b2.local [--health]
 import { apiCall, requireHost } from './apiClient.js';
 import { parseArgs } from './args.js';
 

@@ -190,9 +190,6 @@ bool ConfigCodec::validate(const DeviceConfig& cfg, const char** errorOut) {
   if (pwLen != 0 && (pwLen < 8 || pwLen > 63)) {
     return fail("wifiPassword must be empty or 8-63 chars");
   }
-  if (std::strlen(cfg.adminToken) < 16) {
-    return fail("adminToken must be at least 16 chars");
-  }
   if (cfg.collectorPort == 0) {
     return fail("collectorPort must be non-zero");
   }
@@ -216,7 +213,7 @@ bool ConfigCodec::validate(const DeviceConfig& cfg, const char** errorOut) {
 }
 
 bool ConfigCodec::isComplete(const DeviceConfig& cfg) {
-  return cfg.provisioned && std::strlen(cfg.wifiSsid) > 0 && std::strlen(cfg.adminToken) >= 16;
+  return cfg.provisioned && std::strlen(cfg.wifiSsid) > 0;
 }
 
 }  // namespace rfsense

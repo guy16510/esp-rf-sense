@@ -24,6 +24,8 @@
     "test": "vitest run",
     "dashboard:start": "tsx apps/dashboard/src/run.ts",
     "collector:start": "tsx tools/collector/src/cli.ts",
+    "dashboard": "npm run dashboard:start",
+    "dashboard:start": "tools/analysis/.venv/bin/rfsense-live --udp-port 5566 --http-port 8080",
     "experiment:start": "tsx tools/experiments/src/cli.ts start",
     "experiment:stop": "tsx tools/experiments/src/cli.ts stop",
     "experiment:status": "tsx tools/experiments/src/cli.ts status",

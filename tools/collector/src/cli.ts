@@ -1,11 +1,11 @@
 // Entry point for `npm run collector:start`.
 //
 //   npm run collector:start -- --port 5566 --out data --name run-01 \
-//       [--device http://rf-sense-a1b2.local --token <admin>] [--mode controlled]
+//       [--device http://rf-sense-a1b2.local] [--mode controlled]
 //
-// When --device is given the collector authenticates and tells the device to start capture on
-// launch and stop on shutdown, so a recording brackets exactly one capture session. Ctrl-C closes
-// the recording cleanly (complete=true). A crash leaves complete=false so the data is flagged.
+// When --device is given the collector tells the device to start capture on launch and stop on
+// shutdown, so a recording brackets exactly one capture session. Ctrl-C closes the recording
+// cleanly (complete=true). A crash leaves complete=false so the data is flagged.
 import { parseArgs, flagNum, flagStr } from './args.js';
 import { Collector } from './collector.js';
 import { deviceApi, type DeviceApiOptions } from './deviceApi.js';
@@ -16,11 +16,8 @@ async function main(): Promise<void> {
   const outDir = flagStr(flags, 'out', 'data')!;
   const name = flagStr(flags, 'name', `run-${new Date().toISOString().replace(/[:.]/g, '-')}`)!;
   const deviceUrl = flagStr(flags, 'device', undefined, 'RF_SENSE_DEVICE');
-  const token = flagStr(flags, 'token', undefined, 'RF_SENSE_TOKEN');
 
-  const device: DeviceApiOptions | null = deviceUrl
-    ? { baseUrl: deviceUrl, ...(token ? { token } : {}) }
-    : null;
+  const device: DeviceApiOptions | null = deviceUrl ? { baseUrl: deviceUrl } : null;
 
   const collector = new Collector({ port, outDir, name });
   await collector.start();

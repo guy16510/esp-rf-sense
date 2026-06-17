@@ -7,9 +7,8 @@ relies on a "skip validation" path.
 
 ## Threat model (what we are and aren't defending)
 
-- **In scope:** preventing accidental insecure transport, preventing unauthenticated control of
-  the device, preventing a corrupted/wrong/downgraded firmware image from being installed, and
-  never logging secrets.
+- **In scope:** preventing accidental insecure OTA transport, preventing a
+  corrupted/wrong/downgraded firmware image from being installed, and never logging secrets.
 - **Out of scope for this milestone:** a physically hostile attacker with the board in hand
   (flash readout, fault injection), and a fully untrusted network. Those need secure boot + flash
   encryption + anti-rollback, which are intentionally **not** auto-enabled here (see below).
@@ -29,15 +28,12 @@ relies on a "skip validation" path.
   channel measurements, and is volume-sensitive. Confidentiality of CSI is not a goal; if it
   becomes one, the transport would need to change.
 
-## Authentication
+## Local control
 
-- All **mutating** control-API endpoints and OTA triggers require an admin token, supplied as
-  `X-Device-Token` or `Authorization: Bearer …`. Read-only `GET /status`, `/health`, `/config`
-  are unauthenticated (they expose no secrets).
-- The token is compared in **constant time** to avoid timing oracles.
-- The token is set during provisioning, stored in NVS, and **never returned** by the API —
-  `GET /config` reports only `adminTokenSet: true/false`. Choose a strong token; it authorizes
-  capture control, OTA, reboot, and provisioning reset.
+- The control API is exposed on the trusted LAN without token authentication. This is a research
+  convenience, not a production posture.
+- Any host that can reach the device can start/stop capture, change config, trigger OTA, reboot,
+  or reset provisioning. Keep the device on a trusted lab network.
 
 ## Firmware integrity
 
@@ -53,11 +49,8 @@ relies on a "skip validation" path.
 
 ## Secrets handling
 
-- Wi-Fi password and admin token are stored in NVS and **never written to any log** at any level;
-  the provisioning page never echoes them.
-- The experiment runner passes the admin token to the spawned collector as an argument array with
-  `shell:false`, so it never transits a shell (no history, no injection, not visible as a shell
-  command line).
+- The Wi-Fi password is stored in NVS and **never written to any log** at any level; the
+  provisioning page never echoes it.
 - The OTA deploy workflow keeps the server address and SSH key in environment secrets, writes the
   key to a mode-600 file, and pins `known_hosts`; nothing sensitive lives in the repo.
 
@@ -76,6 +69,6 @@ trade-off, documented rather than hidden.
 
 ## What a production deployment would add
 
-Secure Boot v2 + flash encryption + anti-rollback eFuse; per-device provisioned credentials
-instead of a single admin token; signed manifests (signature in addition to SHA-256); and
-encrypted/authenticated transport for the CSI stream if its confidentiality ever matters.
+Secure Boot v2 + flash encryption + anti-rollback eFuse; per-device provisioned credentials;
+signed manifests (signature in addition to SHA-256); and encrypted/authenticated transport for
+the CSI stream if its confidentiality ever matters.
