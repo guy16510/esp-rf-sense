@@ -1,4 +1,4 @@
-export type ActivityState = 'waiting' | 'clear' | 'active';
+export type ActivityState = 'waiting' | 'baseline' | 'clear' | 'active';
 
 export interface ActivityBubble {
   id: string;
@@ -8,6 +8,18 @@ export interface ActivityBubble {
   confidence: number;
   motion: number;
   zone: string | null;
+}
+
+export interface ActivityDiagnostics {
+  baselineReady: boolean;
+  baselineSamples: number;
+  baselineRequired: number;
+  baselineProgress: number;
+  baselineMean: number | null;
+  baselineDeviation: number;
+  activationScore: number;
+  activeStreak: number;
+  clearStreak: number;
 }
 
 export interface DashboardState {
@@ -28,6 +40,7 @@ export interface DashboardState {
   invalidDatagrams: number;
   mode: 'heuristic' | 'portable-model';
   scores: Record<string, number>;
+  diagnostics: ActivityDiagnostics;
 }
 
 export interface CampaignMarker {
@@ -42,6 +55,15 @@ export interface DeviceLogEntry {
   sequence: number;
   uptimeMs: number;
   line: string;
+}
+
+export interface DeviceTelemetry {
+  connected: boolean;
+  lastUpdated: number | null;
+  error: string | null;
+  status: Record<string, unknown> | null;
+  health: Record<string, unknown> | null;
+  config: Record<string, unknown> | null;
 }
 
 export interface PortableModelBundle {
