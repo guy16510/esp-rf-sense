@@ -1,4 +1,4 @@
-import type { ActivityState } from './contracts.js';
+import type { ActivityDiagnostics, ActivityState } from './contracts.js';
 import { motionLevel, windowFeatures } from './features.js';
 import type { PortablePrototypeModel } from './model.js';
 
@@ -9,35 +9,31 @@ export interface ActivityResult {
   zone: string | null;
   mode: 'heuristic' | 'portable-model';
   scores: Record<string, number>;
+  diagnostics: ActivityDiagnostics;
 }
 
+const REQUIRED = 20;
+
 export class ActivityClassifier {
-  private baselineMean: number | null = null;
-  private baselineVariance = 0;
-  private baselineSamples = 0;
+  private mean: number | null = null;
+  private variance = 0;
+  private samples = 0;
+  private activeVotes = 0;
+  private clearVotes = 0;
+  private active = false;
 
   constructor(
     private readonly model?: PortablePrototypeModel,
-    private readonly motionThreshold?: number,
+    private readonly threshold?: number,
   ) {}
 
   evaluate(frames: readonly Float64Array[]): ActivityResult {
     const motion = motionLevel(frames);
-    if (frames.length < 2) {
-      return {
-        state: 'waiting',
-        confidence: 0,
-        motion,
-        zone: null,
-        mode: 'heuristic',
-        scores: {},
-      };
-    }
+    if (frames.length < 2) return this.result('waiting', 0, motion, 0);
+
     if (this.model && frames.length >= this.model.bundle.window) {
-      const features = windowFeatures(frames.slice(-this.model.bundle.window));
-      const prediction = this.model.predict(features);
-      const normalized = prediction.state.toLowerCase();
-      const clear = normalized.includes('empty') || normalized.includes('clear');
+      const prediction = this.model.predict(windowFeatures(frames.slice(-this.model.bundle.window)));
+      const clear = /empty|clear/iu.test(prediction.state);
       return {
         state: clear ? 'clear' : 'active',
         confidence: prediction.confidence,
@@ -45,47 +41,84 @@ export class ActivityClassifier {
         zone: prediction.zone,
         mode: 'portable-model',
         scores: prediction.scores,
+        diagnostics: this.diagnostics(1, true),
       };
     }
-    return this.evaluateHeuristic(motion);
+
+    if (this.threshold === undefined && this.samples < REQUIRED) {
+      this.learn(motion, 0.18);
+      this.samples++;
+      return this.result('baseline', this.samples / REQUIRED, motion, 0);
+    }
+
+    const score = this.threshold === undefined
+      ? this.adaptiveScore(motion)
+      : clamp(motion / (this.threshold * 2));
+
+    if (score >= 0.65) {
+      this.activeVotes++;
+      this.clearVotes = 0;
+    } else if (score <= 0.35) {
+      this.clearVotes++;
+      this.activeVotes = 0;
+    }
+    if (this.activeVotes >= 2) this.active = true;
+    if (this.clearVotes >= 4) this.active = false;
+    if (!this.active && score < 0.2 && this.threshold === undefined) this.learn(motion, 0.025);
+
+    return this.result(this.active ? 'active' : 'clear', this.active ? score : 1 - score, motion, score);
   }
 
   reset(): void {
-    this.baselineMean = null;
-    this.baselineVariance = 0;
-    this.baselineSamples = 0;
+    this.mean = null;
+    this.variance = 0;
+    this.samples = 0;
+    this.activeVotes = 0;
+    this.clearVotes = 0;
+    this.active = false;
   }
 
-  private evaluateHeuristic(motion: number): ActivityResult {
-    let activeProbability = 0;
-    if (this.motionThreshold !== undefined) {
-      activeProbability = Math.min(1, motion / Math.max(this.motionThreshold * 2, 1e-9));
-    } else {
-      if (this.baselineMean === null) this.baselineMean = motion;
-      this.baselineSamples++;
-      const deviation = Math.sqrt(Math.max(this.baselineVariance, 0));
-      const z = deviation > 0 ? (motion - this.baselineMean) / deviation : 0;
-      const meaningfulRise = motion > Math.max(this.baselineMean * 2, this.baselineMean + 1e-6);
-      activeProbability = this.baselineSamples > 10 && meaningfulRise ? sigmoid(z - 3) : 0;
-      if (activeProbability < 0.5) {
-        const alpha = 0.05;
-        const delta = motion - this.baselineMean;
-        this.baselineMean += alpha * delta;
-        this.baselineVariance = (1 - alpha) * (this.baselineVariance + alpha * delta * delta);
-      }
-    }
-    const active = activeProbability >= 0.5;
+  private adaptiveScore(motion: number): number {
+    const mean = this.mean ?? motion;
+    const deviation = Math.sqrt(Math.max(this.variance, 0.000000000001));
+    if (motion <= Math.max(mean * 1.8, mean + 0.000001)) return 0;
+    return clamp(1 / (1 + Math.exp(-((motion - mean) / deviation - 2.75))));
+  }
+
+  private learn(value: number, alpha: number): void {
+    if (this.mean === null) this.mean = value;
+    const delta = value - this.mean;
+    this.mean += alpha * delta;
+    this.variance = (1 - alpha) * (this.variance + alpha * delta * delta);
+  }
+
+  private result(state: ActivityState, confidence: number, motion: number, score: number): ActivityResult {
     return {
-      state: active ? 'active' : 'clear',
-      confidence: active ? activeProbability : 1 - activeProbability,
+      state,
+      confidence: clamp(confidence),
       motion,
       zone: null,
       mode: 'heuristic',
-      scores: { active: activeProbability, clear: 1 - activeProbability },
+      scores: state === 'baseline' ? { learning: confidence } : { active: score, clear: 1 - score },
+      diagnostics: this.diagnostics(score, this.threshold !== undefined || this.samples >= REQUIRED),
+    };
+  }
+
+  private diagnostics(score: number, ready: boolean): ActivityDiagnostics {
+    return {
+      baselineReady: ready,
+      baselineSamples: this.samples,
+      baselineRequired: REQUIRED,
+      baselineProgress: ready ? 1 : this.samples / REQUIRED,
+      baselineMean: this.mean,
+      baselineDeviation: Math.sqrt(Math.max(this.variance, 0)),
+      activationScore: clamp(score),
+      activeStreak: this.activeVotes,
+      clearStreak: this.clearVotes,
     };
   }
 }
 
-function sigmoid(value: number): number {
-  return 1 / (1 + Math.exp(-value));
+function clamp(value: number): number {
+  return Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0));
 }
