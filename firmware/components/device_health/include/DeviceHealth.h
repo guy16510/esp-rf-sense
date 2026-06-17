@@ -7,7 +7,6 @@
 
 namespace rfsense {
 
-// Persistent boot/OTA stats owned by ota_manager's BootGuard, mirrored here for snapshots.
 struct PersistentStats {
   uint32_t bootCount = 0;
   uint32_t consecutiveFailedBoots = 0;
@@ -19,24 +18,26 @@ struct PersistentStats {
 
 struct HealthSnapshot {
   uint32_t uptimeSeconds;
-  const char* bootReason;   // esp_reset_reason() text
-  const char* resetReason;  // alias kept for the documented field name
+  const char* bootReason;
+  const char* resetReason;
   uint32_t bootCount;
   uint32_t consecutiveFailedBoots;
 
   uint32_t freeHeap;
+  uint32_t totalHeap;
   uint32_t minFreeHeap;
   uint32_t psramFree;
   uint32_t psramTotal;
+  uint32_t cpuFrequencyMhz;
 
   uint64_t csiFramesCaptured;
   uint32_t csiFramesQueued;
   uint64_t csiQueueDrops;
   uint64_t networkBatchesSent;
   uint64_t networkSendFailures;
-  uint64_t networkQueueDrops;  // batches dropped locally (encode->network backpressure)
+  uint64_t networkQueueDrops;
   uint64_t networkBytesSent;
-  uint32_t collectorPacketLossPpm;  // collector-reported; 0/unknown on the device
+  uint32_t collectorPacketLossPpm;
 
   uint64_t pingRequests;
   uint64_t pingReplies;
@@ -49,7 +50,6 @@ struct HealthSnapshot {
   uint32_t rollbackCount;
   uint32_t watchdogEvents;
 
-  // Task stack headroom (min free words observed), per tracked task. -1 if not tracked.
   int32_t stackEncodeWords;
   int32_t stackNetworkWords;
   int32_t stackPingWords;
@@ -59,7 +59,6 @@ class DeviceHealth {
  public:
   static DeviceHealth& instance();
 
-  // --- counters (called from many tasks; relaxed atomics) ---
   void incCsiCaptured(uint32_t n = 1) { csiFramesCaptured_ += n; }
   void setCsiQueued(uint32_t n) { csiFramesQueued_.store(n, std::memory_order_relaxed); }
   void incCsiQueueDrops(uint32_t n = 1) { csiQueueDrops_ += n; }
@@ -76,14 +75,10 @@ class DeviceHealth {
     collectorLossPpm_.store(ppm, std::memory_order_relaxed);
   }
 
-  // Task stack headroom in words (StackType_t units); -1 means untracked.
   void recordStackEncode(int32_t words) { stackEncode_.store(words, std::memory_order_relaxed); }
   void recordStackNetwork(int32_t words) { stackNetwork_.store(words, std::memory_order_relaxed); }
   void recordStackPing(int32_t words) { stackPing_.store(words, std::memory_order_relaxed); }
-
-  // Persistent stats mirror (set by ota_manager BootGuard).
   void setPersistentStats(const PersistentStats& s);
-
   HealthSnapshot snapshot() const;
 
  private:
@@ -105,8 +100,6 @@ class DeviceHealth {
   std::atomic<int32_t> stackEncode_{-1};
   std::atomic<int32_t> stackNetwork_{-1};
   std::atomic<int32_t> stackPing_{-1};
-
-  // Mirrored persistent stats (plain; updated infrequently from one task).
   PersistentStats persistent_{};
 };
 
