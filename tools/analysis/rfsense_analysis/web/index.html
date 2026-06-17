@@ -6,21 +6,15 @@
   <meta name="color-scheme" content="dark" />
   <title>RF-Sense control center</title>
   <link rel="stylesheet" href="/styles.css" />
+  <style>
+    .subtitle{margin:3px 0 0;color:var(--muted)}.inline-actions{display:flex;gap:8px;flex-wrap:wrap}.metric-grid{grid-template-columns:repeat(6,minmax(0,1fr))}.workspace{grid-template-columns:minmax(0,2.2fr) minmax(350px,.9fr)}.baseline-strip{display:grid;grid-template-columns:1fr minmax(160px,320px);gap:14px;align-items:center;padding:10px 16px;border-bottom:1px solid var(--border);color:var(--muted);font-size:12px}.progress,.meter{display:block;height:6px;border-radius:99px;background:rgba(255,255,255,.08);overflow:hidden}.progress i,.meter i{display:block;width:0;height:100%;background:linear-gradient(90deg,var(--cyan),var(--green));transition:width 180ms}.device-section{padding:13px 16px;border-bottom:1px solid var(--border)}.health-badge{padding:5px 9px;border-radius:999px;border:1px solid var(--border);font-size:10px;text-transform:uppercase}.health-badge.healthy{color:var(--green)}.health-badge.warning{color:var(--amber)}.health-badge.critical{color:var(--red)}.kv-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.kv-grid div{padding:9px;border:1px solid var(--border);border-radius:9px;background:rgba(255,255,255,.025)}.kv-grid span{display:block;color:var(--muted);font-size:10px;text-transform:uppercase}.kv-grid strong{display:block;margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.meter-row{display:flex;justify-content:space-between;margin:8px 0 4px;color:var(--muted)}.control-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px}.charts-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}.chart-panel{min-height:320px}.diagnostic-banner{margin:13px 0 10px;padding:10px 12px;border:1px solid var(--border);border-radius:9px;color:var(--muted)}.diagnostic-banner.good{color:var(--green)}.diagnostic-banner.warn{color:var(--amber)}.diagnostic-banner.bad{color:var(--red)}.diagnostics-grid{grid-template-columns:repeat(5,1fr)}.rf-link.active{stroke:var(--amber)}.rf-wave{fill:none;stroke:rgba(57,217,255,.3);stroke-width:2}.rf-wave.active{stroke:var(--amber)}.rf-disturbance{fill:rgba(255,202,98,.12);stroke:var(--amber);stroke-width:2;stroke-dasharray:5 4}.rf-disturbance-label{fill:var(--text);font-size:12px;font-weight:700;text-anchor:middle}.rf-disturbance-meta{fill:var(--muted);font-size:10px;text-anchor:middle}@media(max-width:1300px){.metric-grid{grid-template-columns:repeat(3,1fr)}.workspace{grid-template-columns:1fr}}@media(max-width:900px){.charts-grid{grid-template-columns:1fr}.diagnostics-grid{grid-template-columns:repeat(2,1fr)}}@media(max-width:720px){.baseline-strip{grid-template-columns:1fr}.control-grid{grid-template-columns:1fr}}
+  </style>
 </head>
 <body>
   <header class="topbar">
-    <div>
-      <div class="eyebrow">RF-SENSE</div>
-      <h1>RF link control center</h1>
-      <p class="subtitle">Live CSI disturbance, capture health, and ESP32 diagnostics</p>
-    </div>
-    <div class="top-actions">
-      <span class="status-chip"><i id="streamDot"></i><span id="streamStatus">Connecting</span></span>
-      <span class="status-chip"><i id="deviceDot"></i><span id="deviceStatus">Device unknown</span></span>
-      <button id="pauseButton" type="button">Pause</button>
-    </div>
+    <div><div class="eyebrow">RF-SENSE</div><h1>RF link control center</h1><p class="subtitle">Live CSI disturbance, capture health, and ESP32 diagnostics</p></div>
+    <div class="top-actions"><span class="status-chip"><i id="streamDot"></i><span id="streamStatus">Connecting</span></span><span class="status-chip"><i id="deviceDot"></i><span id="deviceStatus">Device unknown</span></span><button id="pauseButton" type="button">Pause</button></div>
   </header>
-
   <main class="dashboard-shell">
     <section class="metric-grid">
       <article class="metric-card primary"><span>RF state</span><strong id="stateValue">Waiting</strong><small id="stateDetail">Waiting for CSI frames</small></article>
@@ -30,103 +24,27 @@
       <article class="metric-card"><span>Stream age</span><strong id="streamAgeValue">—</strong><small id="qualityDetail">No packets received</small></article>
       <article class="metric-card"><span>ESP32</span><strong id="deviceNameValue">Offline</strong><small id="firmwareValue">No telemetry</small></article>
     </section>
-
     <section class="workspace">
       <article class="panel scene-panel">
-        <div class="panel-heading">
-          <div><span class="eyebrow">LIVE RF LINK</span><h2>Router to ESP32 signal disturbance</h2></div>
-          <div class="inline-actions"><button id="resetBaselineButton" type="button">Relearn baseline</button><button id="resetViewButton" type="button">Reset view</button></div>
-        </div>
-        <div class="baseline-strip">
-          <span id="baselineLabel">Waiting to learn an empty-room baseline</span>
-          <span class="progress"><i id="baselineProgress"></i></span>
-        </div>
+        <div class="panel-heading"><div><span class="eyebrow">LIVE RF LINK</span><h2>Router to ESP32 signal disturbance</h2></div><div class="inline-actions"><button id="resetBaselineButton" type="button">Relearn baseline</button><button id="resetViewButton" type="button">Reset view</button></div></div>
+        <div class="baseline-strip"><span id="baselineLabel">Waiting to learn an empty-room baseline</span><span class="progress"><i id="baselineProgress"></i></span></div>
         <div class="scene-wrap"><div id="scene"></div><div id="sceneTooltip" class="tooltip" hidden></div></div>
         <div class="honesty-banner" id="sceneCaveat">A single RF link does not provide exact coordinates, pose, orientation, distance, or people count.</div>
       </article>
-
       <aside class="panel device-panel">
         <div class="panel-heading compact"><div><span class="eyebrow">DEVICE HEALTH</span><h2 id="deviceHeading">ESP32-S3 telemetry</h2></div><span id="healthBadge" class="health-badge unknown">Unknown</span></div>
-        <div class="device-section">
-          <h3>Identity and network</h3>
-          <div class="kv-grid">
-            <div><span>Device</span><strong id="identityDevice">—</strong></div>
-            <div><span>Firmware</span><strong id="identityFirmware">—</strong></div>
-            <div><span>Commit</span><strong id="identityCommit">—</strong></div>
-            <div><span>Uptime</span><strong id="uptimeValue">—</strong></div>
-            <div><span>Wi-Fi RSSI</span><strong id="rssiValue">—</strong></div>
-            <div><span>Reconnects</span><strong id="reconnectValue">—</strong></div>
-          </div>
-        </div>
-        <div class="device-section">
-          <h3>Memory and CPU</h3>
-          <div class="meter-row"><span>Heap</span><strong id="heapValue">—</strong></div><span class="meter"><i id="heapMeter"></i></span>
-          <div class="meter-row"><span>PSRAM</span><strong id="psramValue">—</strong></div><span class="meter"><i id="psramMeter"></i></span>
-          <div class="kv-grid compact-grid">
-            <div><span>CPU</span><strong id="cpuValue">—</strong></div>
-            <div><span>Min heap</span><strong id="minHeapValue">—</strong></div>
-            <div><span>Watchdog</span><strong id="watchdogValue">—</strong></div>
-            <div><span>Boot reason</span><strong id="bootReasonValue">—</strong></div>
-          </div>
-        </div>
-        <div class="device-section">
-          <h3>Capture pipeline</h3>
-          <div class="kv-grid compact-grid">
-            <div><span>Capture</span><strong id="captureValue">—</strong></div>
-            <div><span>Frames</span><strong id="capturedValue">—</strong></div>
-            <div><span>Queue</span><strong id="queueValue">—</strong></div>
-            <div><span>Drops</span><strong id="dropValue">—</strong></div>
-            <div><span>Batches</span><strong id="batchValue">—</strong></div>
-            <div><span>Send failures</span><strong id="sendFailureValue">—</strong></div>
-          </div>
-        </div>
-        <div class="device-section controls">
-          <h3>Controls</h3>
-          <div class="control-grid">
-            <button data-control="capture-start">Start capture</button>
-            <button data-control="capture-stop">Stop capture</button>
-            <button data-control="ota-check">Check OTA</button>
-            <button data-control="ota-apply">Apply OTA</button>
-            <button data-control="reboot" class="danger">Reboot</button>
-          </div>
-          <p id="controlStatus" class="muted">Controls require a connected device API.</p>
-        </div>
+        <div class="device-section"><h3>Identity and network</h3><div class="kv-grid"><div><span>Device</span><strong id="identityDevice">—</strong></div><div><span>Firmware</span><strong id="identityFirmware">—</strong></div><div><span>Commit</span><strong id="identityCommit">—</strong></div><div><span>Uptime</span><strong id="uptimeValue">—</strong></div><div><span>Wi-Fi RSSI</span><strong id="rssiValue">—</strong></div><div><span>Reconnects</span><strong id="reconnectValue">—</strong></div></div></div>
+        <div class="device-section"><h3>Memory and CPU</h3><div class="meter-row"><span>Heap</span><strong id="heapValue">—</strong></div><span class="meter"><i id="heapMeter"></i></span><div class="meter-row"><span>PSRAM</span><strong id="psramValue">—</strong></div><span class="meter"><i id="psramMeter"></i></span><div class="kv-grid compact-grid"><div><span>CPU</span><strong id="cpuValue">—</strong></div><div><span>Min heap</span><strong id="minHeapValue">—</strong></div><div><span>Watchdog</span><strong id="watchdogValue">—</strong></div><div><span>Boot reason</span><strong id="bootReasonValue">—</strong></div></div></div>
+        <div class="device-section"><h3>Capture pipeline</h3><div class="kv-grid compact-grid"><div><span>Capture</span><strong id="captureValue">—</strong></div><div><span>Frames</span><strong id="capturedValue">—</strong></div><div><span>Queue</span><strong id="queueValue">—</strong></div><div><span>Drops</span><strong id="dropValue">—</strong></div><div><span>Batches</span><strong id="batchValue">—</strong></div><div><span>Send failures</span><strong id="sendFailureValue">—</strong></div></div></div>
+        <div class="device-section controls"><h3>Controls</h3><div class="control-grid"><button data-control="capture-start">Start capture</button><button data-control="capture-stop">Stop capture</button><button data-control="ota-check">Check OTA</button><button data-control="ota-apply">Apply OTA</button><button data-control="reboot" class="danger">Reboot</button></div><p id="controlStatus" class="muted">Controls require a connected device API.</p></div>
       </aside>
     </section>
-
     <section class="charts-grid">
-      <article class="panel chart-panel">
-        <div class="panel-heading compact"><div><span class="eyebrow">SUBCARRIERS</span><h2>CSI amplitude profile</h2></div><span id="subcarrierValue" class="muted">0 subcarriers</span></div>
-        <svg id="profileChart" viewBox="0 0 1000 220"></svg>
-      </article>
-      <article class="panel chart-panel">
-        <div class="panel-heading compact"><div><span class="eyebrow">ROLLING SIGNAL</span><h2>Motion and confidence history</h2></div></div>
-        <div id="timeline"></div>
-      </article>
+      <article class="panel chart-panel"><div class="panel-heading compact"><div><span class="eyebrow">SUBCARRIERS</span><h2>CSI amplitude profile</h2></div><span id="subcarrierValue" class="muted">0 subcarriers</span></div><svg id="profileChart" viewBox="0 0 1000 220"></svg></article>
+      <article class="panel chart-panel"><div class="panel-heading compact"><div><span class="eyebrow">ROLLING SIGNAL</span><h2>Motion and confidence history</h2></div></div><div id="timeline"></div></article>
     </section>
-
-    <details class="panel diagnostics-panel" open>
-      <summary>Pipeline diagnostics</summary>
-      <div id="diagnosticBanner" class="diagnostic-banner">Waiting for enough information to diagnose the pipeline.</div>
-      <div class="diagnostics-grid">
-        <div><span>Dashboard mode</span><strong id="modeValue">—</strong></div>
-        <div><span>Valid datagrams</span><strong id="datagramValue">0</strong></div>
-        <div><span>Invalid datagrams</span><strong id="invalidValue">0</strong></div>
-        <div><span>Packet loss</span><strong id="lossValue">0 ppm</strong></div>
-        <div><span>Baseline mean</span><strong id="baselineMeanValue">—</strong></div>
-        <div><span>Baseline deviation</span><strong id="baselineDeviationValue">—</strong></div>
-        <div><span>Activation score</span><strong id="activationValue">—</strong></div>
-        <div><span>Collector target</span><strong id="collectorValue">—</strong></div>
-        <div><span>Ping replies</span><strong id="pingValue">—</strong></div>
-        <div><span>OTA state</span><strong id="otaValue">—</strong></div>
-      </div>
-      <div class="capability-block"><h3>What this build can claim</h3><div id="capabilityList" class="capability-list"></div></div>
-    </details>
-
-    <section class="panel log-panel">
-      <div class="panel-heading"><div><span class="eyebrow">DEVICE LOGS</span><h2>Live firmware stream</h2></div><span id="logStatus" class="muted">Not connected</span></div>
-      <pre id="deviceLogs" aria-live="polite"></pre>
-    </section>
+    <details class="panel diagnostics-panel" open><summary>Pipeline diagnostics</summary><div id="diagnosticBanner" class="diagnostic-banner">Waiting for enough information to diagnose the pipeline.</div><div class="diagnostics-grid"><div><span>Dashboard mode</span><strong id="modeValue">—</strong></div><div><span>Valid datagrams</span><strong id="datagramValue">0</strong></div><div><span>Invalid datagrams</span><strong id="invalidValue">0</strong></div><div><span>Packet loss</span><strong id="lossValue">0 ppm</strong></div><div><span>Baseline mean</span><strong id="baselineMeanValue">—</strong></div><div><span>Baseline deviation</span><strong id="baselineDeviationValue">—</strong></div><div><span>Activation score</span><strong id="activationValue">—</strong></div><div><span>Collector target</span><strong id="collectorValue">—</strong></div><div><span>Ping replies</span><strong id="pingValue">—</strong></div><div><span>OTA state</span><strong id="otaValue">—</strong></div></div><div class="capability-block"><h3>What this build can claim</h3><div id="capabilityList" class="capability-list"></div></div></details>
+    <section class="panel log-panel"><div class="panel-heading"><div><span class="eyebrow">DEVICE LOGS</span><h2>Live firmware stream</h2></div><span id="logStatus" class="muted">Not connected</span></div><pre id="deviceLogs" aria-live="polite"></pre></section>
   </main>
   <script type="module" src="/boot.js"></script>
 </body>
