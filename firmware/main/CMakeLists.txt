@@ -13,6 +13,7 @@ idf_component_register(
         control_api
         ota_manager
         device_health
+        device_logs
         mdns_service
         nvs_flash
         esp_event

@@ -14,6 +14,7 @@ interface Flags {
   windowFrames: number;
   motionThreshold?: number;
   modelPath?: string;
+  deviceUrl?: string;
 }
 
 async function main(): Promise<void> {
@@ -33,6 +34,7 @@ async function main(): Promise<void> {
     host: flags.httpHost,
     port: flags.httpPort,
     intervalMs: flags.intervalMs,
+    ...(flags.deviceUrl ? { deviceUrl: flags.deviceUrl } : {}),
   });
   const socket = createSocket({ type: 'udp4', reuseAddr: true });
   socket.on('message', (message) => {
@@ -58,6 +60,7 @@ async function main(): Promise<void> {
   console.error(
     `[dashboard] mode ${model ? `portable model (${model.bundle.target})` : 'heuristic'}`,
   );
+  if (flags.deviceUrl) console.error(`[dashboard] device logs ${flags.deviceUrl}/api/v1/logs`);
 
   let stopping = false;
   const stop = async (signal: string) => {
@@ -92,6 +95,7 @@ function parseFlags(argv: string[]): Flags {
   }
   const threshold = values.get('motion-threshold');
   const modelPath = values.get('model');
+  const deviceUrl = values.get('device') ?? process.env.RF_SENSE_DEVICE;
   return {
     udpHost: values.get('udp-host') ?? '0.0.0.0',
     udpPort: numberFlag(values, 'udp-port', 5566),
@@ -101,6 +105,7 @@ function parseFlags(argv: string[]): Flags {
     windowFrames: Math.max(8, numberFlag(values, 'window', 64)),
     ...(threshold === undefined ? {} : { motionThreshold: Number(threshold) }),
     ...(modelPath === undefined ? {} : { modelPath }),
+    ...(deviceUrl === undefined ? {} : { deviceUrl }),
   };
 }
 
@@ -124,6 +129,7 @@ Options:
   --window FRAMES          Frames per inference window (default 64)
   --motion-threshold N     Override heuristic motion threshold
   --model PATH             Portable model bundle
+  --device URL             ESP32 control API base URL for live logs (or RF_SENSE_DEVICE)
   -h, --help               Show this help
 `);
 }

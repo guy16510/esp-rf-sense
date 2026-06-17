@@ -81,6 +81,8 @@ h3 { margin-bottom: 8px; font-size: 13px; }
 .diagnostics-grid div { padding: 10px; border: 1px solid var(--border); border-radius: 9px; background: rgba(255,255,255,.025); }
 .diagnostics-grid strong { display: block; margin-top: 4px; font-size: 14px; }
 #profileChart { width: 100%; height: 180px; }
+.log-panel { margin-top: 12px; }
+#deviceLogs { height: 220px; margin: 0; padding: 12px 16px; overflow: auto; border-top: 1px solid var(--border); color: #d8e2ee; background: rgba(0,0,0,.22); font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
 .rf-grid line { stroke: rgba(148,163,184,.07); }
 .rf-corridor { fill: rgba(57,217,255,.055); stroke: rgba(57,217,255,.24); stroke-dasharray: 8 6; }
 .rf-link { stroke: rgba(57,217,255,.38); stroke-width: 2; stroke-dasharray: 5 7; }

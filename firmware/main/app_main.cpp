@@ -19,6 +19,7 @@
 #include "ControlApi.h"
 #include "CsiCapture.h"
 #include "DeviceHealth.h"
+#include "DeviceLogs.h"
 #include "FrameQueue.h"
 #include "MdnsService.h"
 #include "NetworkStreamer.h"
@@ -131,6 +132,7 @@ bool captureStart() {
     }
   }
   ESP_LOGI(kTag, "capture started (mode=%d)", static_cast<int>(mode));
+  DeviceLogs::instance().appendNow("capture started");
   return true;
 }
 
@@ -139,6 +141,7 @@ bool captureStop() {
   CsiCapture::instance().stop();
   NetworkStreamer::instance().stop();
   ESP_LOGI(kTag, "capture stopped");
+  DeviceLogs::instance().appendNow("capture stopped");
   return true;
 }
 
@@ -150,6 +153,7 @@ void otaMaintenance() {
   NetworkStreamer::instance().sendMaintenanceNotice();
   NetworkStreamer::instance().stop();
   ESP_LOGW(kTag, "entered OTA maintenance: capture halted, collector notified");
+  DeviceLogs::instance().appendNow("entered OTA maintenance");
 }
 
 const char* otaStateText(OtaState s) {
@@ -200,6 +204,14 @@ void supervisorTask(void*) {
     DeviceHealth::instance().setCsiQueued(FrameQueue::instance().queued());
     const OtaStatus ota = OtaManager::instance().status();
     MdnsService::instance().updateState(CsiCapture::instance().isActive(), otaStateText(ota.state));
+    if (elapsedS % 10 == 0) {
+      char line[128];
+      std::snprintf(line, sizeof(line), "telemetry rssi=%d queued=%u capture=%s ota=%s",
+                    WifiManager::instance().currentRssi(),
+                    static_cast<unsigned>(FrameQueue::instance().queued()),
+                    CsiCapture::instance().isActive() ? "active" : "idle", otaStateText(ota.state));
+      DeviceLogs::instance().appendNow(line);
+    }
 
     // Optional scheduled OTA check (off by default). Never auto-applies while capturing.
     if (cfg.otaScheduledEnabled && cfg.otaManifestUrl[0] != '\0' &&
@@ -231,6 +243,8 @@ esp_err_t initNvs() {
 extern "C" void app_main() {
   using namespace rfsense;
 
+  DeviceLogs::instance().install();
+
   ESP_ERROR_CHECK(initNvs());
   ESP_ERROR_CHECK(esp_event_loop_create_default());
   ESP_ERROR_CHECK(esp_netif_init());
@@ -243,6 +257,13 @@ extern "C" void app_main() {
   const BuildInfo bi = buildInfo();
   ESP_LOGI(kTag, "rf-sense %s (%s) deviceId=%08lx bootId=%08lx", bi.version, bi.gitCommit,
            static_cast<unsigned long>(g_deviceId), static_cast<unsigned long>(g_bootId));
+  {
+    char line[160];
+    std::snprintf(line, sizeof(line), "boot rf-sense %s commit=%s device=%08lx boot=%08lx",
+                  bi.version, bi.gitCommit, static_cast<unsigned long>(g_deviceId),
+                  static_cast<unsigned long>(g_bootId));
+    DeviceLogs::instance().appendNow(line);
+  }
 #ifdef CONFIG_RF_SENSE_CLASSIC_ESP32_EXPERIMENT
   ESP_LOGW(kTag, "DISPOSABLE EXPERIMENT BUILD for classic ESP32; not an S3 production image");
 #endif
@@ -293,8 +314,11 @@ extern "C" void app_main() {
 
   WifiManager::instance().startStation(cfg.wifiSsid, cfg.wifiPassword);
   WifiManager::instance().waitForIp(15000);
+  DeviceLogs::instance().appendNow(WifiManager::instance().isConnected() ? "wifi connected"
+                                                                         : "wifi not connected");
 
   ESP_ERROR_CHECK(ControlApi::instance().start(kDefaultControlPort));
+  DeviceLogs::instance().appendNow("control api started");
 
   const std::string host = "rf-sense-" + id4Lower();
   const std::string instance = "RF-Sense " + id4Upper();

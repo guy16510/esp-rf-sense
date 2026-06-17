@@ -6,10 +6,18 @@ The live RF dashboard runs entirely in Node.js. Python is not required to collec
 
 ```bash
 npm ci
-npm run dashboard:start -- --udp-port 5566 --http-port 8080
+npm run dashboard:device
 ```
 
 Open `http://127.0.0.1:8080/`.
+
+To open the dashboard from a phone on the same Wi-Fi, run:
+
+```bash
+npm run dashboard:phone
+```
+
+Then open `http://<this-computer-ip>:8080/` on the phone.
 
 The Node process:
 
@@ -21,6 +29,7 @@ The Node process:
 - publishes state through HTTP and Server-Sent Events every 200 ms
 - serves the reusable D3 dashboard
 - records campaign and interaction markers in the live timeline
+- optionally proxies recent firmware logs from the device control API
 
 Useful options:
 
@@ -33,7 +42,15 @@ Useful options:
 --window 64
 --motion-threshold 1.25
 --model models/live.json
+--device http://rf-sense-a1b2.local
 ```
+
+The `dashboard:device` and `dashboard:phone` scripts default to `http://rf-sense-a1b2.local`.
+Override that with `RF_SENSE_DEVICE=http://your-device.local npm run dashboard:device`.
+
+`--device` may also be supplied as `RF_SENSE_DEVICE`. When set, the dashboard polls
+`/api/v1/logs` on the ESP32 and forwards new log lines to the browser as `log` SSE events.
+Logs are not part of the RFCS CSI datagrams.
 
 ## Optional offline model development
 

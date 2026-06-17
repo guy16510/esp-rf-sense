@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { fileURLToPath } from 'node:url';
 
-import type { DashboardState } from './contracts.js';
+import type { DashboardState, DeviceLogEntry } from './contracts.js';
 import { EventStore } from './events.js';
 import type { RealtimeEngine } from './engine.js';
 
@@ -24,14 +24,19 @@ export interface DashboardServerOptions {
   host: string;
   port: number;
   intervalMs: number;
+  deviceUrl?: string;
 }
 
 export class DashboardServer {
   private readonly events = new EventStore();
   private readonly history: DashboardState[] = [];
+  private readonly logs: DeviceLogEntry[] = [];
   private readonly clients = new Set<ServerResponse>();
   private readonly server: Server;
   private timer: NodeJS.Timeout | null = null;
+  private logTimer: NodeJS.Timeout | null = null;
+  private logPollActive = false;
+  private lastLogSequence = 0;
   private state: DashboardState;
 
   constructor(
@@ -54,10 +59,16 @@ export class DashboardServer {
     });
     this.timer = setInterval(() => this.publish(), this.options.intervalMs);
     this.timer.unref();
+    if (this.options.deviceUrl) {
+      this.logTimer = setInterval(() => void this.pollLogs(), 1000);
+      this.logTimer.unref();
+      void this.pollLogs();
+    }
   }
 
   async stop(): Promise<void> {
     if (this.timer) clearInterval(this.timer);
+    if (this.logTimer) clearInterval(this.logTimer);
     for (const client of this.clients) client.end();
     await new Promise<void>((resolve) => this.server.close(() => resolve()));
   }
@@ -68,6 +79,32 @@ export class DashboardServer {
     if (this.history.length > 1800) this.history.shift();
     const payload = JSON.stringify(this.state);
     for (const client of this.clients) client.write(`event: state\ndata: ${payload}\n\n`);
+  }
+
+  private async pollLogs(): Promise<void> {
+    if (!this.options.deviceUrl) return;
+    if (this.logPollActive) return;
+    this.logPollActive = true;
+    try {
+      const url = new URL('/api/v1/logs', this.options.deviceUrl);
+      url.searchParams.set('after', String(this.lastLogSequence));
+      url.searchParams.set('limit', '80');
+      const response = await fetch(url, { signal: AbortSignal.timeout(1500) });
+      if (!response.ok) return;
+      const payload = (await response.json()) as { entries?: DeviceLogEntry[] };
+      for (const entry of payload.entries ?? []) {
+        if (entry.sequence <= this.lastLogSequence) continue;
+        this.lastLogSequence = Math.max(this.lastLogSequence, entry.sequence);
+        this.logs.push(entry);
+        if (this.logs.length > 300) this.logs.shift();
+        const data = JSON.stringify(entry);
+        for (const client of this.clients) client.write(`event: log\ndata: ${data}\n\n`);
+      }
+    } catch {
+      // The device may reboot or be temporarily unreachable; state streaming should continue.
+    } finally {
+      this.logPollActive = false;
+    }
   }
 
   private async handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
@@ -111,6 +148,14 @@ export class DashboardServer {
       }
       if (request.method === 'GET' && url.pathname === '/api/events') {
         this.sendJson(response, 200, this.events.list());
+        return;
+      }
+      if (request.method === 'GET' && url.pathname === '/api/logs') {
+        this.sendJson(response, 200, {
+          deviceUrl: this.options.deviceUrl ?? null,
+          latestSequence: this.lastLogSequence,
+          entries: this.logs,
+        });
         return;
       }
       if (request.method === 'POST' && url.pathname === '/api/events') {

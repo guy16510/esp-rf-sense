@@ -38,6 +38,12 @@ export interface CampaignMarker {
   timestamp: number;
 }
 
+export interface DeviceLogEntry {
+  sequence: number;
+  uptimeMs: number;
+  line: string;
+}
+
 export interface PortableModelBundle {
   format: 'rfsense-portable-model/1';
   target: 'presence' | 'label' | 'position';

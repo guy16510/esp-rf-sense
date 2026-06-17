@@ -9,6 +9,7 @@ const timeline = new LiveTimeline(get('timeline'));
 let meta;
 let latest;
 let paused = false;
+const logLines = [];
 
 function adapt(state) {
   const entities = (state.bubbles || []).map((bubble) => ({
@@ -140,6 +141,15 @@ async function refreshEvents() {
   timeline.setMarkers(events.map((event) => ({ ...event, ts: event.timestamp })));
 }
 
+function renderLog(entry) {
+  logLines.push(`[${(entry.uptimeMs / 1000).toFixed(3)}] ${entry.line.trimEnd()}`);
+  if (logLines.length > 300) logLines.shift();
+  const logRoot = get('deviceLogs');
+  logRoot.textContent = logLines.join('\n');
+  logRoot.scrollTop = logRoot.scrollHeight;
+  get('logStatus').textContent = `Live (${entry.sequence})`;
+}
+
 async function boot() {
   meta = await json('/api/meta');
   scene.setMeta(meta);
@@ -147,9 +157,13 @@ async function boot() {
   const history = await json('/api/history?seconds=120');
   timeline.setHistory(history.map(adapt));
   await refreshEvents();
+  const logs = await json('/api/logs');
+  get('logStatus').textContent = logs.deviceUrl ? 'Connected' : 'Start dashboard with --device URL';
+  (logs.entries || []).forEach(renderLog);
 
   const stream = new EventSource('/events');
   stream.addEventListener('state', (event) => render(JSON.parse(event.data)));
+  stream.addEventListener('log', (event) => renderLog(JSON.parse(event.data)));
   stream.onopen = () => { get('streamStatus').textContent = 'Live'; };
   stream.onerror = () => { get('streamStatus').textContent = 'Reconnecting'; };
 

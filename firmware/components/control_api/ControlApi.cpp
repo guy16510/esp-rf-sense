@@ -1,10 +1,12 @@
 #include "ControlApi.h"
 
 #include <cstring>
+#include <cstdlib>
 
 #include "AppConfig.h"
 #include "ConfigStore.h"
 #include "DeviceHealth.h"
+#include "DeviceLogs.h"
 #include "OtaManager.h"
 #include "cJSON.h"
 #include "esp_http_server.h"
@@ -147,6 +149,39 @@ esp_err_t statusGet(httpd_req_t* req) {
 }
 
 esp_err_t healthGet(httpd_req_t* req) { return sendJson(req, buildHealthJson(), "200 OK"); }
+
+esp_err_t logsGet(httpd_req_t* req) {
+  char query[96] = {};
+  uint32_t after = 0;
+  std::size_t limit = 80;
+  if (httpd_req_get_url_query_str(req, query, sizeof(query)) == ESP_OK) {
+    char value[16] = {};
+    if (httpd_query_key_value(query, "after", value, sizeof(value)) == ESP_OK) {
+      after = static_cast<uint32_t>(std::strtoul(value, nullptr, 10));
+    }
+    if (httpd_query_key_value(query, "limit", value, sizeof(value)) == ESP_OK) {
+      const unsigned long parsed = std::strtoul(value, nullptr, 10);
+      if (parsed > 0 && parsed <= 96) limit = static_cast<std::size_t>(parsed);
+    }
+  }
+
+  auto* entries = static_cast<DeviceLogEntry*>(std::calloc(limit, sizeof(DeviceLogEntry)));
+  if (!entries) return sendError(req, "500 Internal Server Error", "log buffer allocation failed");
+  const std::size_t count = DeviceLogs::instance().readSince(after, entries, limit);
+  cJSON* root = cJSON_CreateObject();
+  cJSON_AddNumberToObject(root, "latestSequence", DeviceLogs::instance().latestSequence());
+  cJSON_AddNumberToObject(root, "dropped", DeviceLogs::instance().dropped());
+  cJSON* arr = cJSON_AddArrayToObject(root, "entries");
+  for (std::size_t i = 0; i < count; ++i) {
+    cJSON* item = cJSON_CreateObject();
+    cJSON_AddNumberToObject(item, "sequence", entries[i].sequence);
+    cJSON_AddNumberToObject(item, "uptimeMs", entries[i].uptimeMs);
+    cJSON_AddStringToObject(item, "line", entries[i].line);
+    cJSON_AddItemToArray(arr, item);
+  }
+  std::free(entries);
+  return sendJson(req, root, "200 OK");
+}
 
 esp_err_t configGet(httpd_req_t* req) {
   const DeviceConfig c = ConfigStore::instance().get();
@@ -326,6 +361,7 @@ esp_err_t ControlApi::start(uint16_t port) {
 
   reg("/api/v1/status", HTTP_GET, statusGet);
   reg("/api/v1/health", HTTP_GET, healthGet);
+  reg("/api/v1/logs", HTTP_GET, logsGet);
   reg("/api/v1/config", HTTP_GET, configGet);
   reg("/api/v1/config", HTTP_POST, configPost);
   reg("/api/v1/capture/start", HTTP_POST, captureStartPost);
