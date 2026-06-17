@@ -5,13 +5,15 @@
     "outDir": "dist"
   },
   "files": [
+    "src/activity.ts",
+    "src/cli.ts",
     "src/contracts.ts",
+    "src/engine.ts",
     "src/events.ts",
-    "src/node-engine.ts",
-    "src/node-server.ts",
-    "src/numeric-features.ts",
+    "src/features.ts",
+    "src/input-buffer.ts",
+    "src/model.ts",
     "src/protocol.ts",
-    "src/ring-buffer.ts",
-    "src/run.ts"
+    "src/web-server.ts"
   ]
 }
