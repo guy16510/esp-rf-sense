@@ -1,7 +1,9 @@
 import type { CsiFrame } from './protocol.js';
 
 export function decodeAmplitude(frame: CsiFrame): Float64Array {
-  const raw = frame.firstWordInvalid ? frame.csi.subarray(Math.min(4, frame.csi.length)) : frame.csi;
+  const raw = frame.firstWordInvalid
+    ? frame.csi.subarray(Math.min(4, frame.csi.length))
+    : frame.csi;
   const output = new Float64Array(Math.floor(raw.length / 2));
   for (let index = 0; index < output.length; index++) {
     output[index] = Math.hypot(raw.readInt8(index * 2 + 1), raw.readInt8(index * 2));
@@ -67,7 +69,5 @@ function median(values: readonly number[]): number {
   if (values.length === 0) return 0;
   const sorted = [...values].sort((left, right) => left - right);
   const middle = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 0
-    ? (sorted[middle - 1]! + sorted[middle]!) / 2
-    : sorted[middle]!;
+  return sorted.length % 2 === 0 ? (sorted[middle - 1]! + sorted[middle]!) / 2 : sorted[middle]!;
 }

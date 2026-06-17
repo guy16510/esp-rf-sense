@@ -1,7 +1,9 @@
 import type { CsiFrame } from './protocol.js';
 
 export function decodeAmplitude(frame: CsiFrame): Float64Array {
-  const raw = frame.firstWordInvalid ? frame.csi.subarray(Math.min(4, frame.csi.length)) : frame.csi;
+  const raw = frame.firstWordInvalid
+    ? frame.csi.subarray(Math.min(4, frame.csi.length))
+    : frame.csi;
   const count = Math.floor(raw.length / 2);
   const amplitude = new Float64Array(count);
   for (let index = 0; index < count; index++) {
@@ -63,7 +65,8 @@ export function windowFeatures(frames: readonly Float64Array[]): number[] {
       std[index] += delta * delta;
     }
   }
-  for (let index = 0; index < subcarriers; index++) std[index] = Math.sqrt(std[index]! / frames.length);
+  for (let index = 0; index < subcarriers; index++)
+    std[index] = Math.sqrt(std[index]! / frames.length);
 
   let diffSum = 0;
   let diffPeak = 0;
@@ -101,9 +104,7 @@ function median(values: readonly number[]): number {
   if (values.length === 0) return 0;
   const sorted = [...values].sort((left, right) => left - right);
   const middle = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 0
-    ? (sorted[middle - 1]! + sorted[middle]!) / 2
-    : sorted[middle]!;
+  return sorted.length % 2 === 0 ? (sorted[middle - 1]! + sorted[middle]!) / 2 : sorted[middle]!;
 }
 
 function averagePairwiseCorrelation(

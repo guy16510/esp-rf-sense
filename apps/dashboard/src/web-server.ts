@@ -84,7 +84,11 @@ export class DashboardServer {
       if (request.method === 'GET' && url.pathname === '/api/history') {
         const seconds = Math.min(600, Math.max(1, Number(url.searchParams.get('seconds') ?? 120)));
         const cutoff = Date.now() / 1000 - seconds;
-        this.sendJson(response, 200, this.history.filter((item) => item.timestamp >= cutoff));
+        this.sendJson(
+          response,
+          200,
+          this.history.filter((item) => item.timestamp >= cutoff),
+        );
         return;
       }
       if (request.method === 'GET' && url.pathname === '/api/meta') {
@@ -126,7 +130,9 @@ export class DashboardServer {
       }
       this.sendText(response, 404, 'not found');
     } catch (error) {
-      this.sendJson(response, 400, { error: error instanceof Error ? error.message : String(error) });
+      this.sendJson(response, 400, {
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 

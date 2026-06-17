@@ -20,7 +20,6 @@ from urllib.parse import parse_qs, urlparse
 
 import numpy as np
 
-from . import csi as csi_mod
 from .live import (
     InteractiveTrainer,
     LiveBuffer,

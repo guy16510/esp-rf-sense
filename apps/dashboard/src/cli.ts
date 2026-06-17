@@ -17,7 +17,12 @@ interface Flags {
 }
 
 async function main(): Promise<void> {
-  const flags = parseFlags(process.argv.slice(2));
+  const argv = process.argv.slice(2);
+  if (argv.includes('--help') || argv.includes('-h')) {
+    printHelp();
+    return;
+  }
+  const flags = parseFlags(argv);
   const model = flags.modelPath ? await loadPortableModel(flags.modelPath) : undefined;
   const engine = new RealtimeEngine({
     windowFrames: flags.windowFrames,
@@ -50,7 +55,9 @@ async function main(): Promise<void> {
   await dashboard.start();
   console.error(`[dashboard] CSI UDP ${flags.udpHost}:${flags.udpPort}`);
   console.error(`[dashboard] web http://${flags.httpHost}:${flags.httpPort}/`);
-  console.error(`[dashboard] mode ${model ? `portable model (${model.bundle.target})` : 'heuristic'}`);
+  console.error(
+    `[dashboard] mode ${model ? `portable model (${model.bundle.target})` : 'heuristic'}`,
+  );
 
   let stopping = false;
   const stop = async (signal: string) => {
@@ -103,6 +110,22 @@ function numberFlag(values: Map<string, string>, key: string, fallback: number):
   const value = Number(raw);
   if (!Number.isFinite(value)) throw new Error(`--${key} must be numeric`);
   return value;
+}
+
+function printHelp(): void {
+  console.log(`Usage: npm run dashboard:start -- [options]
+
+Options:
+  --udp-host HOST          UDP bind host (default 0.0.0.0)
+  --udp-port PORT          UDP port for CSI datagrams (default 5566)
+  --http-host HOST         HTTP bind host (default 127.0.0.1)
+  --http-port PORT         HTTP dashboard port (default 8080)
+  --interval-ms MS         Push interval in milliseconds (default 200)
+  --window FRAMES          Frames per inference window (default 64)
+  --motion-threshold N     Override heuristic motion threshold
+  --model PATH             Portable model bundle
+  -h, --help               Show this help
+`);
 }
 
 main().catch((error) => {

@@ -6,7 +6,9 @@ import type { DashboardState } from './contracts.js';
 import { EventStore } from './events.js';
 import type { NodeEngine } from './node-engine.js';
 
-const LEGACY_ROOT = fileURLToPath(new URL('../../../tools/analysis/rfsense_analysis/web/', import.meta.url));
+const LEGACY_ROOT = fileURLToPath(
+  new URL('../../../tools/analysis/rfsense_analysis/web/', import.meta.url),
+);
 const APP_ROOT = fileURLToPath(new URL('../public/', import.meta.url));
 const FILES = new Map([
   ['/', 'index.html'],
@@ -22,7 +24,9 @@ export class NodeDashboardServer {
   private readonly events = new EventStore();
   private readonly history: DashboardState[] = [];
   private readonly clients = new Set<ServerResponse>();
-  private readonly server = createServer((request, response) => void this.handle(request, response));
+  private readonly server = createServer(
+    (request, response) => void this.handle(request, response),
+  );
   private timer: NodeJS.Timeout | null = null;
   private state: DashboardState;
 
@@ -66,11 +70,16 @@ export class NodeDashboardServer {
       const url = new URL(request.url ?? '/', 'http://localhost');
       const file = FILES.get(url.pathname);
       if (request.method === 'GET' && file) return void (await this.sendFile(response, file));
-      if (request.method === 'GET' && url.pathname === '/api/state') return void this.json(response, 200, this.state);
+      if (request.method === 'GET' && url.pathname === '/api/state')
+        return void this.json(response, 200, this.state);
       if (request.method === 'GET' && url.pathname === '/api/history') {
         const seconds = Math.min(600, Math.max(1, Number(url.searchParams.get('seconds') ?? 120)));
         const cutoff = Date.now() / 1000 - seconds;
-        return void this.json(response, 200, this.history.filter((item) => item.timestamp >= cutoff));
+        return void this.json(
+          response,
+          200,
+          this.history.filter((item) => item.timestamp >= cutoff),
+        );
       }
       if (request.method === 'GET' && url.pathname === '/api/meta') {
         return void this.json(response, 200, {
@@ -89,7 +98,8 @@ export class NodeDashboardServer {
           disclaimer: 'The display shows anonymous aggregate RF activity with uncertainty.',
         });
       }
-      if (request.method === 'GET' && url.pathname === '/api/events') return void this.json(response, 200, this.events.list());
+      if (request.method === 'GET' && url.pathname === '/api/events')
+        return void this.json(response, 200, this.events.list());
       if (request.method === 'POST' && url.pathname === '/api/events') {
         const body = await this.body(request);
         const event = this.events.add(
@@ -100,7 +110,8 @@ export class NodeDashboardServer {
         );
         return void this.json(response, 201, event);
       }
-      if (request.method === 'GET' && url.pathname === '/events') return void this.openStream(response);
+      if (request.method === 'GET' && url.pathname === '/events')
+        return void this.openStream(response);
       this.text(response, 404, 'not found');
     } catch (error) {
       this.json(response, 400, { error: error instanceof Error ? error.message : String(error) });
@@ -141,19 +152,26 @@ export class NodeDashboardServer {
       chunks.push(value);
     }
     const parsed = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('JSON object required');
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed))
+      throw new Error('JSON object required');
     return parsed as Record<string, unknown>;
   }
 
   private json(response: ServerResponse, status: number, value: unknown): void {
     const content = Buffer.from(JSON.stringify(value));
-    response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': content.length });
+    response.writeHead(status, {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Content-Length': content.length,
+    });
     response.end(content);
   }
 
   private text(response: ServerResponse, status: number, value: string): void {
     const content = Buffer.from(value);
-    response.writeHead(status, { 'Content-Type': 'text/plain; charset=utf-8', 'Content-Length': content.length });
+    response.writeHead(status, {
+      'Content-Type': 'text/plain; charset=utf-8',
+      'Content-Length': content.length,
+    });
     response.end(content);
   }
 }

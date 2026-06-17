@@ -17,7 +17,10 @@ export class NodeEngine {
   private baselineVariance = 0;
   private baselineSamples = 0;
 
-  constructor(private readonly windowFrames = 64, private readonly threshold?: number) {
+  constructor(
+    private readonly windowFrames = 64,
+    private readonly threshold?: number,
+  ) {
     this.samples = new RingBuffer(Math.max(windowFrames * 8, 256));
   }
 
@@ -49,7 +52,17 @@ export class NodeEngine {
       motion,
       zone: null,
       bubbles: active
-        ? [{ id: 'activity-0', x: 0.5, y: 0.5, radius: 0.08 + confidence * 0.08, confidence, motion, zone: null }]
+        ? [
+            {
+              id: 'activity-0',
+              x: 0.5,
+              y: 0.5,
+              radius: 0.08 + confidence * 0.08,
+              confidence,
+              motion,
+              zone: null,
+            },
+          ]
         : [],
       amplitudeProfile: amplitudeProfile(amplitudes),
       frameRateHz: frameRate(samples),
@@ -66,13 +79,15 @@ export class NodeEngine {
   }
 
   private activityProbability(motion: number): number {
-    if (this.threshold !== undefined) return Math.min(1, motion / Math.max(this.threshold * 2, 1e-9));
+    if (this.threshold !== undefined)
+      return Math.min(1, motion / Math.max(this.threshold * 2, 1e-9));
     if (this.baselineMean === null) this.baselineMean = motion;
     this.baselineSamples++;
     const deviation = Math.sqrt(Math.max(this.baselineVariance, 0));
     const z = deviation > 0 ? (motion - this.baselineMean) / deviation : 0;
     const meaningfulRise = motion > Math.max(this.baselineMean * 2, this.baselineMean + 1e-6);
-    const probability = this.baselineSamples > 10 && meaningfulRise ? 1 / (1 + Math.exp(-(z - 3))) : 0;
+    const probability =
+      this.baselineSamples > 10 && meaningfulRise ? 1 / (1 + Math.exp(-(z - 3))) : 0;
     if (probability < 0.5) {
       const alpha = 0.05;
       const delta = motion - this.baselineMean;

@@ -42,6 +42,11 @@ secrets/
 *.p12
 !tools/ota-server/certs/README.md
 
+# --- Local device provisioning (contains Wi-Fi credentials) ---
+.env
+.env.*
+!.env.example
+
 # --- Editor / OS ---
 .DS_Store
 .vscode/
