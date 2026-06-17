@@ -15,6 +15,7 @@
     "tools/experiments"
   ],
   "scripts": {
+    "rf": "node tools/rf.mjs",
     "build": "tsc --build tools/collector tools/ota-server tools/cli tools/experiments apps/dashboard",
     "clean": "tsc --build --clean tools/collector tools/ota-server tools/cli tools/experiments apps/dashboard",
     "typecheck": "tsc --build tools/collector tools/ota-server tools/cli tools/experiments apps/dashboard",
@@ -25,8 +26,8 @@
     "collector:start": "tsx tools/collector/src/cli.ts",
     "dashboard": "npm run dashboard:start",
     "dashboard:start": "tsx apps/dashboard/src/cli.ts",
-    "dashboard:device": "tsx apps/dashboard/src/cli.ts --device ${RF_SENSE_DEVICE:-http://rf-sense-a1b2.local}",
-    "dashboard:phone": "tsx apps/dashboard/src/cli.ts --http-host 0.0.0.0 --device ${RF_SENSE_DEVICE:-http://rf-sense-a1b2.local}",
+    "dashboard:device": "tsx apps/dashboard/src/cli.ts --device http://rf-sense-a1b2.local",
+    "dashboard:phone": "tsx apps/dashboard/src/cli.ts --http-host 0.0.0.0 --device http://rf-sense-a1b2.local",
     "firmware:bundle": "cd firmware && idf.py set-target esp32s3 && idf.py build && python tools/size_check.py --app build/rf-sense.bin && python tools/build_bootstrap_bundle.py --build-dir build --out ../dist/bootstrap",
     "firmware:flash:configured": "node tools/flash-configured.mjs",
     "flash": "npm run firmware:flash:configured",
