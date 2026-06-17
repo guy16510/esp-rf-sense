@@ -16,7 +16,7 @@ export class RealtimeEngine {
   private readonly input: InputBuffer;
   private readonly classifier: ActivityClassifier;
   private latestKey: string | null = null;
-  private latestResult;
+  private latestResult = new ActivityClassifier().evaluate([]);
 
   constructor(options: EngineOptions = {}) {
     this.windowFrames = Math.max(8, Math.floor(options.windowFrames ?? 64));
