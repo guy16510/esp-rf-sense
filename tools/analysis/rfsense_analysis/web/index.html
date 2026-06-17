@@ -4,62 +4,127 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="color-scheme" content="dark" />
-  <title>RF-Sense live scene</title>
+  <title>RF-Sense control center</title>
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
   <header class="topbar">
-    <div><div class="eyebrow">RF-SENSE</div><h1>Live audience scene</h1></div>
+    <div>
+      <div class="eyebrow">RF-SENSE</div>
+      <h1>RF link control center</h1>
+      <p class="subtitle">Live CSI disturbance, capture health, and ESP32 diagnostics</p>
+    </div>
     <div class="top-actions">
       <span class="status-chip"><i id="streamDot"></i><span id="streamStatus">Connecting</span></span>
+      <span class="status-chip"><i id="deviceDot"></i><span id="deviceStatus">Device unknown</span></span>
       <button id="pauseButton" type="button">Pause</button>
-      <button id="resetViewButton" type="button">Reset view</button>
     </div>
   </header>
+
   <main class="dashboard-shell">
     <section class="metric-grid">
-      <article class="metric-card primary"><span>Estimated audience</span><strong id="audienceValue">—</strong><small id="audienceRange">Waiting for signal</small></article>
-      <article class="metric-card"><span>Predicted state</span><strong id="stateValue">—</strong><small id="targetValue">No model state yet</small></article>
-      <article class="metric-card"><span>Confidence</span><strong id="confidenceValue">—</strong><small><span id="confidenceBar"><i></i></span></small></article>
-      <article class="metric-card"><span>Movement</span><strong id="motionValue">—</strong><small id="directionValue">Direction unavailable</small></article>
-      <article class="metric-card"><span>Data quality</span><strong id="qualityValue">—</strong><small id="qualityDetail">Waiting for frames</small></article>
+      <article class="metric-card primary"><span>RF state</span><strong id="stateValue">Waiting</strong><small id="stateDetail">Waiting for CSI frames</small></article>
+      <article class="metric-card"><span>Confidence</span><strong id="confidenceValue">0%</strong><small><span id="confidenceBar"><i></i></span></small></article>
+      <article class="metric-card"><span>Motion score</span><strong id="motionValue">0.000</strong><small id="baselineValue">Baseline not learned</small></article>
+      <article class="metric-card"><span>CSI rate</span><strong id="frameRateValue">0.0 Hz</strong><small id="frameDetail">0 datagrams</small></article>
+      <article class="metric-card"><span>Stream age</span><strong id="streamAgeValue">—</strong><small id="qualityDetail">No packets received</small></article>
+      <article class="metric-card"><span>ESP32</span><strong id="deviceNameValue">Offline</strong><small id="firmwareValue">No telemetry</small></article>
     </section>
+
     <section class="workspace">
       <article class="panel scene-panel">
-        <div class="panel-heading"><div><span class="eyebrow">INTERACTIVE RF SCENE</span><h2>Estimated entities, movement and pose</h2></div></div>
+        <div class="panel-heading">
+          <div><span class="eyebrow">LIVE RF LINK</span><h2>Router to ESP32 signal disturbance</h2></div>
+          <div class="inline-actions"><button id="resetBaselineButton" type="button">Relearn baseline</button><button id="resetViewButton" type="button">Reset view</button></div>
+        </div>
+        <div class="baseline-strip">
+          <span id="baselineLabel">Waiting to learn an empty-room baseline</span>
+          <span class="progress"><i id="baselineProgress"></i></span>
+        </div>
         <div class="scene-wrap"><div id="scene"></div><div id="sceneTooltip" class="tooltip" hidden></div></div>
-        <div class="honesty-banner" id="sceneCaveat">Visual entities are RF-derived hypotheses with uncertainty.</div>
+        <div class="honesty-banner" id="sceneCaveat">A single RF link does not provide exact coordinates, pose, orientation, distance, or people count.</div>
       </article>
-      <aside class="panel side-panel">
-        <div class="panel-heading compact"><div><span class="eyebrow">INTERPRETATION</span><h2>Model belief</h2></div></div>
-        <div id="scoreList" class="score-list"><p class="muted">Waiting for model scores.</p></div>
-        <div class="capability-block"><h3>Available capabilities</h3><div id="capabilityList" class="capability-list"></div></div>
-        <div class="capability-block">
-          <h3>Scene labels</h3>
-          <p class="muted">Richer classes can use count, pose, orientation, movement, zone, and kind metadata. The legacy live view remains available for interactive calibration.</p>
-          <code>count=2|pose=standing|orientation=facing-display|zone=front</code>
+
+      <aside class="panel device-panel">
+        <div class="panel-heading compact"><div><span class="eyebrow">DEVICE HEALTH</span><h2 id="deviceHeading">ESP32-S3 telemetry</h2></div><span id="healthBadge" class="health-badge unknown">Unknown</span></div>
+        <div class="device-section">
+          <h3>Identity and network</h3>
+          <div class="kv-grid">
+            <div><span>Device</span><strong id="identityDevice">—</strong></div>
+            <div><span>Firmware</span><strong id="identityFirmware">—</strong></div>
+            <div><span>Commit</span><strong id="identityCommit">—</strong></div>
+            <div><span>Uptime</span><strong id="uptimeValue">—</strong></div>
+            <div><span>Wi-Fi RSSI</span><strong id="rssiValue">—</strong></div>
+            <div><span>Reconnects</span><strong id="reconnectValue">—</strong></div>
+          </div>
+        </div>
+        <div class="device-section">
+          <h3>Memory and CPU</h3>
+          <div class="meter-row"><span>Heap</span><strong id="heapValue">—</strong></div><span class="meter"><i id="heapMeter"></i></span>
+          <div class="meter-row"><span>PSRAM</span><strong id="psramValue">—</strong></div><span class="meter"><i id="psramMeter"></i></span>
+          <div class="kv-grid compact-grid">
+            <div><span>CPU</span><strong id="cpuValue">—</strong></div>
+            <div><span>Min heap</span><strong id="minHeapValue">—</strong></div>
+            <div><span>Watchdog</span><strong id="watchdogValue">—</strong></div>
+            <div><span>Boot reason</span><strong id="bootReasonValue">—</strong></div>
+          </div>
+        </div>
+        <div class="device-section">
+          <h3>Capture pipeline</h3>
+          <div class="kv-grid compact-grid">
+            <div><span>Capture</span><strong id="captureValue">—</strong></div>
+            <div><span>Frames</span><strong id="capturedValue">—</strong></div>
+            <div><span>Queue</span><strong id="queueValue">—</strong></div>
+            <div><span>Drops</span><strong id="dropValue">—</strong></div>
+            <div><span>Batches</span><strong id="batchValue">—</strong></div>
+            <div><span>Send failures</span><strong id="sendFailureValue">—</strong></div>
+          </div>
+        </div>
+        <div class="device-section controls">
+          <h3>Controls</h3>
+          <div class="control-grid">
+            <button data-control="capture-start">Start capture</button>
+            <button data-control="capture-stop">Stop capture</button>
+            <button data-control="ota-check">Check OTA</button>
+            <button data-control="ota-apply">Apply OTA</button>
+            <button data-control="reboot" class="danger">Reboot</button>
+          </div>
+          <p id="controlStatus" class="muted">Controls require a connected device API.</p>
         </div>
       </aside>
     </section>
-    <section class="panel timeline-panel">
-      <div class="panel-heading">
-        <div><span class="eyebrow">LIVE TIMELINE</span><h2>Confidence, movement, audience and campaign markers</h2></div>
-        <div class="marker-controls"><input id="campaignId" value="demo-campaign" /><button data-marker="campaign_start">Start</button><button data-marker="interaction">Interaction</button><button data-marker="campaign_end">End</button></div>
-      </div>
-      <div id="timeline"></div>
+
+    <section class="charts-grid">
+      <article class="panel chart-panel">
+        <div class="panel-heading compact"><div><span class="eyebrow">SUBCARRIERS</span><h2>CSI amplitude profile</h2></div><span id="subcarrierValue" class="muted">0 subcarriers</span></div>
+        <svg id="profileChart" viewBox="0 0 1000 220"></svg>
+      </article>
+      <article class="panel chart-panel">
+        <div class="panel-heading compact"><div><span class="eyebrow">ROLLING SIGNAL</span><h2>Motion and confidence history</h2></div></div>
+        <div id="timeline"></div>
+      </article>
     </section>
-    <details class="panel diagnostics-panel">
-      <summary>Signal and stream diagnostics</summary>
+
+    <details class="panel diagnostics-panel" open>
+      <summary>Pipeline diagnostics</summary>
+      <div id="diagnosticBanner" class="diagnostic-banner">Waiting for enough information to diagnose the pipeline.</div>
       <div class="diagnostics-grid">
-        <div><span>Device</span><strong id="deviceValue">—</strong></div><div><span>Frame rate</span><strong id="frameRateValue">—</strong></div><div><span>Packet loss</span><strong id="lossValue">—</strong></div><div><span>Subcarriers</span><strong id="subcarrierValue">—</strong></div><div><span>Stream age</span><strong id="streamAgeValue">—</strong></div><div><span>Mode</span><strong id="modeValue">—</strong></div>
+        <div><span>Dashboard mode</span><strong id="modeValue">—</strong></div>
+        <div><span>Valid datagrams</span><strong id="datagramValue">0</strong></div>
+        <div><span>Invalid datagrams</span><strong id="invalidValue">0</strong></div>
+        <div><span>Packet loss</span><strong id="lossValue">0 ppm</strong></div>
+        <div><span>Baseline mean</span><strong id="baselineMeanValue">—</strong></div>
+        <div><span>Baseline deviation</span><strong id="baselineDeviationValue">—</strong></div>
+        <div><span>Activation score</span><strong id="activationValue">—</strong></div>
+        <div><span>Collector target</span><strong id="collectorValue">—</strong></div>
+        <div><span>Ping replies</span><strong id="pingValue">—</strong></div>
+        <div><span>OTA state</span><strong id="otaValue">—</strong></div>
       </div>
-      <svg id="profileChart" viewBox="0 0 1000 180"></svg>
+      <div class="capability-block"><h3>What this build can claim</h3><div id="capabilityList" class="capability-list"></div></div>
     </details>
+
     <section class="panel log-panel">
-      <div class="panel-heading">
-        <div><span class="eyebrow">DEVICE LOGS</span><h2>Live firmware stream</h2></div>
-        <span id="logStatus" class="muted">Not connected</span>
-      </div>
+      <div class="panel-heading"><div><span class="eyebrow">DEVICE LOGS</span><h2>Live firmware stream</h2></div><span id="logStatus" class="muted">Not connected</span></div>
       <pre id="deviceLogs" aria-live="polite"></pre>
     </section>
   </main>
