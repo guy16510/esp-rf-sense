@@ -1,6 +1,6 @@
-import type { DashboardState } from "./contracts.js";
-import { RealtimeEngine, type EngineOptions } from "./engine.js";
-import type { CsiDatagram } from "./protocol.js";
+import type { DashboardState } from './contracts.js';
+import { RealtimeEngine, type EngineOptions } from './engine.js';
+import type { CsiDatagram } from './protocol.js';
 
 export interface MultiNodeOptions extends EngineOptions {
   requiredNodeCount?: number;
@@ -66,7 +66,7 @@ export class MultiNodeEngine {
       this.runtimes.set(id, runtime);
     }
 
-    if (runtime.bootId !== (datagram.header.bootId >>> 0)) {
+    if (runtime.bootId !== datagram.header.bootId >>> 0) {
       runtime.bootId = datagram.header.bootId >>> 0;
       runtime.lastPacketSeq = null;
       runtime.missingPackets = 0;
@@ -97,9 +97,7 @@ export class MultiNodeEngine {
   snapshot(nowMs = Date.now()): MultiNodeSnapshot {
     const nodes = [...this.runtimes.values()]
       .map((runtime) => this.nodeSnapshot(runtime, nowMs))
-      .sort((left, right) =>
-        String(left.deviceId).localeCompare(String(right.deviceId)),
-      );
+      .sort((left, right) => String(left.deviceId).localeCompare(String(right.deviceId)));
     const required = Math.max(1, this.options.requiredNodeCount ?? 4);
     const readyNodes = nodes.filter((node) => node.ready);
     const reasons: string[] = [];
@@ -131,23 +129,17 @@ export class MultiNodeEngine {
     const base = runtime.engine.snapshot(nowMs);
     const totalPackets = base.datagrams + runtime.missingPackets;
     const lossPpm =
-      totalPackets > 0
-        ? Math.round((runtime.missingPackets / totalPackets) * 1_000_000)
-        : 0;
+      totalPackets > 0 ? Math.round((runtime.missingPackets / totalPackets) * 1_000_000) : 0;
     const reasons: string[] = [];
-    if (base.ageSec === null) reasons.push("no CSI frames received");
-    if (
-      base.ageSec !== null &&
-      base.ageSec > (this.options.staleAfterMs ?? 3000) / 1000
-    )
+    if (base.ageSec === null) reasons.push('no CSI frames received');
+    if (base.ageSec !== null && base.ageSec > (this.options.staleAfterMs ?? 3000) / 1000)
       reasons.push(`last frame ${base.ageSec.toFixed(1)}s ago`);
-    if (!base.diagnostics.baselineReady)
-      reasons.push("empty-room baseline is not ready");
+    if (!base.diagnostics.baselineReady) reasons.push('empty-room baseline is not ready');
     if (base.frameRateHz < (this.options.minFrameRateHz ?? 5))
       reasons.push(`frame rate ${base.frameRateHz.toFixed(1)} Hz is below minimum`);
     if (lossPpm > (this.options.maxLossPpm ?? 100_000))
       reasons.push(`packet loss ${lossPpm} ppm exceeds maximum`);
-    if (runtime.csiLength <= 0) reasons.push("CSI payload is empty");
+    if (runtime.csiLength <= 0) reasons.push('CSI payload is empty');
 
     return {
       ...base,
@@ -161,7 +153,7 @@ export class MultiNodeEngine {
       outOfOrderPackets: runtime.outOfOrderPackets,
       ready: reasons.length === 0,
       readinessReasons: reasons,
-      source: "real",
+      source: 'real',
     };
   }
 
@@ -189,12 +181,11 @@ function fuse(
   allNodes: DashboardState[],
   nowMs: number,
   readinessReasons: string[],
-): MultiNodeSnapshot["fused"] {
+): MultiNodeSnapshot['fused'] {
   const weighted = readyNodes.reduce(
     (accumulator, node) => {
       const quality = Math.max(0.05, 1 - Math.min(1, node.lossPpm / 1_000_000));
-      const activeScore =
-        node.state === "active" ? node.confidence : 1 - node.confidence;
+      const activeScore = node.state === 'active' ? node.confidence : 1 - node.confidence;
       accumulator.weight += quality;
       accumulator.active += activeScore * quality;
       accumulator.motion += node.motion * quality;
@@ -203,35 +194,28 @@ function fuse(
     },
     { weight: 0, active: 0, motion: 0, rate: 0 },
   );
-  const activeProbability =
-    weighted.weight > 0 ? weighted.active / weighted.weight : 0;
+  const activeProbability = weighted.weight > 0 ? weighted.active / weighted.weight : 0;
   const motion = weighted.weight > 0 ? weighted.motion / weighted.weight : 0;
   const state =
     readyNodes.length === 0
-      ? allNodes.some((node) => node.state === "baseline")
-        ? "baseline"
-        : "waiting"
+      ? allNodes.some((node) => node.state === 'baseline')
+        ? 'baseline'
+        : 'waiting'
       : activeProbability >= 0.5
-        ? "active"
-        : "clear";
-  const activeVotes = readyNodes.filter((node) => node.state === "active").length;
-  const clearVotes = readyNodes.filter((node) => node.state === "clear").length;
+        ? 'active'
+        : 'clear';
+  const activeVotes = readyNodes.filter((node) => node.state === 'active').length;
+  const clearVotes = readyNodes.filter((node) => node.state === 'clear').length;
   const disagreement =
     readyNodes.length > 0 ? Math.min(activeVotes, clearVotes) / readyNodes.length : 0;
-  const baselineSamples = allNodes.reduce(
-    (sum, node) => sum + node.diagnostics.baselineSamples,
-    0,
-  );
+  const baselineSamples = allNodes.reduce((sum, node) => sum + node.diagnostics.baselineSamples, 0);
   const baselineRequired = allNodes.reduce(
     (sum, node) => sum + node.diagnostics.baselineRequired,
     0,
   );
   const confidence =
-    state === "active"
-      ? activeProbability
-      : state === "clear"
-        ? 1 - activeProbability
-        : 0;
+    state === 'active' ? activeProbability : state === 'clear' ? 1 - activeProbability : 0;
+  const profileNodes = readyNodes.length > 0 ? readyNodes : allNodes;
 
   return {
     timestamp: nowMs / 1000,
@@ -240,48 +224,52 @@ function fuse(
     motion,
     zone: null,
     bubbles: [],
-    amplitudeProfile: [],
+    amplitudeProfile: fuseAmplitudeProfile(profileNodes),
     frameRateHz: weighted.weight > 0 ? weighted.rate / weighted.weight : 0,
-    lossPpm:
-      readyNodes.length > 0
-        ? Math.max(...readyNodes.map((node) => node.lossPpm))
-        : 0,
-    ageSec:
-      readyNodes.length > 0
-        ? Math.max(...readyNodes.map((node) => node.ageSec ?? 0))
-        : null,
+    lossPpm: readyNodes.length > 0 ? Math.max(...readyNodes.map((node) => node.lossPpm)) : 0,
+    ageSec: readyNodes.length > 0 ? Math.max(...readyNodes.map((node) => node.ageSec ?? 0)) : null,
     deviceId: null,
     bootId: null,
     frames: readyNodes.reduce((sum, node) => sum + node.frames, 0),
     datagrams: allNodes.reduce((sum, node) => sum + node.datagrams, 0),
-    invalidDatagrams: allNodes.reduce(
-      (sum, node) => sum + node.invalidDatagrams,
-      0,
-    ),
-    mode: "fused",
+    invalidDatagrams: allNodes.reduce((sum, node) => sum + node.invalidDatagrams, 0),
+    mode: 'fused',
     scores: { active: activeProbability, clear: 1 - activeProbability },
     diagnostics: {
       baselineReady:
-        allNodes.length > 0 &&
-        allNodes.every((node) => node.diagnostics.baselineReady),
+        allNodes.length > 0 && allNodes.every((node) => node.diagnostics.baselineReady),
       baselineSamples,
       baselineRequired,
-      baselineProgress:
-        baselineRequired > 0 ? Math.min(1, baselineSamples / baselineRequired) : 0,
+      baselineProgress: baselineRequired > 0 ? Math.min(1, baselineSamples / baselineRequired) : 0,
       baselineMean: null,
       baselineDeviation: 0,
       activationScore: activeProbability,
       activeStreak: 0,
       clearStreak: 0,
     },
-    source: "real",
+    source: 'real',
     ready: readinessReasons.length === 0,
     readinessReasons,
-    contributingNodes: readyNodes.map((node) => node.deviceId ?? "unknown"),
+    contributingNodes: readyNodes.map((node) => node.deviceId ?? 'unknown'),
     disagreement,
   };
 }
 
+function fuseAmplitudeProfile(nodes: readonly DashboardState[]): number[] {
+  const profiles = nodes
+    .map((node) => node.amplitudeProfile)
+    .filter((profile) => profile.length > 0);
+  if (profiles.length === 0) return [];
+  const width = Math.max(...profiles.map((profile) => profile.length));
+  return Array.from({ length: width }, (_, column) => {
+    const values = profiles
+      .map((profile) => profile[column])
+      .filter((value): value is number => Number.isFinite(value));
+    if (values.length === 0) return 0;
+    return Number((values.reduce((sum, value) => sum + value, 0) / values.length).toFixed(3));
+  });
+}
+
 function hex(value: number): string {
-  return (value >>> 0).toString(16).padStart(8, "0");
+  return (value >>> 0).toString(16).padStart(8, '0');
 }

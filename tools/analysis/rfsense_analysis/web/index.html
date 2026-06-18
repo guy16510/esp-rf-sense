@@ -43,9 +43,10 @@
       <article class="panel chart-panel"><div class="panel-heading compact"><div><span class="eyebrow">SUBCARRIERS</span><h2>CSI amplitude profile</h2></div><span id="subcarrierValue" class="muted">0 subcarriers</span></div><svg id="profileChart" viewBox="0 0 1000 220"></svg></article>
       <article class="panel chart-panel"><div class="panel-heading compact"><div><span class="eyebrow">ROLLING SIGNAL</span><h2>Motion and confidence history</h2></div></div><div id="timeline"></div></article>
     </section>
+    <section class="panel node-panel"><div class="panel-heading compact"><div><span class="eyebrow">RF NODES</span><h2>Per-node stream stats</h2></div><span id="nodeSummary" class="muted">Waiting for nodes</span></div><div id="nodeStats" class="node-grid"></div></section>
     <details class="panel diagnostics-panel" open><summary>Pipeline diagnostics</summary><div id="diagnosticBanner" class="diagnostic-banner">Waiting for enough information to diagnose the pipeline.</div><div class="diagnostics-grid"><div><span>Dashboard mode</span><strong id="modeValue">—</strong></div><div><span>Valid datagrams</span><strong id="datagramValue">0</strong></div><div><span>Invalid datagrams</span><strong id="invalidValue">0</strong></div><div><span>Packet loss</span><strong id="lossValue">0 ppm</strong></div><div><span>Baseline mean</span><strong id="baselineMeanValue">—</strong></div><div><span>Baseline deviation</span><strong id="baselineDeviationValue">—</strong></div><div><span>Activation score</span><strong id="activationValue">—</strong></div><div><span>Collector target</span><strong id="collectorValue">—</strong></div><div><span>Ping replies</span><strong id="pingValue">—</strong></div><div><span>OTA state</span><strong id="otaValue">—</strong></div></div><div class="capability-block"><h3>What this build can claim</h3><div id="capabilityList" class="capability-list"></div></div></details>
     <section class="panel log-panel"><div class="panel-heading"><div><span class="eyebrow">DEVICE LOGS</span><h2>Live firmware stream</h2></div><span id="logStatus" class="muted">Not connected</span></div><pre id="deviceLogs" aria-live="polite"></pre></section>
   </main>
-  <script type="module" src="/boot.js"></script>
+  <script type="module" src="/boot.js?v=node-stats-2"></script>
 </body>
 </html>

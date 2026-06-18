@@ -4,7 +4,7 @@ import { LiveTimeline } from '/timeline.js';
 
 const style = document.createElement('link');
 style.rel = 'stylesheet';
-style.href = '/control-center.css';
+style.href = '/control-center.css?v=node-stats-2';
 document.head.append(style);
 
 const get = (id) => document.getElementById(id);
@@ -19,6 +19,7 @@ let meta;
 let latestSignal;
 let latestDevice;
 let latestRecording;
+let latestNodes;
 let paused = false;
 
 function installRecordingPanel() {
@@ -203,6 +204,82 @@ function renderRecording(recording) {
   if (stop) stop.disabled = !recording?.active;
 }
 
+function renderNodes(snapshot) {
+  latestNodes = snapshot;
+  const root = get('nodeStats');
+  const summary = get('nodeSummary');
+  if (!root || !summary) return;
+  const nodes = Array.isArray(snapshot?.nodes) ? snapshot.nodes : [];
+  const readiness = snapshot?.readiness || {};
+  summary.textContent = nodes.length
+    ? `${number(readiness.onlineNodeCount, nodes.filter((node) => node.ready).length)} / ${number(readiness.requiredNodeCount, nodes.length)} ready`
+    : 'No nodes discovered';
+  root.replaceChildren();
+  if (nodes.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'node-empty';
+    empty.textContent = 'No per-node stream stats are available from this dashboard mode.';
+    root.append(empty);
+    return;
+  }
+
+  for (const [index, node] of nodes.entries()) {
+    const age = node.ageSec;
+    const stale = Number.isFinite(age) && age > 3;
+    const level = stale ? 'stale' : node.ready ? 'ready' : 'warn';
+    const diagnostics = node.diagnostics || {};
+    const reasons = Array.isArray(node.readinessReasons) ? node.readinessReasons : [];
+    const card = document.createElement('article');
+    card.className = `node-card ${level}`;
+    card.innerHTML = `
+      <header>
+        <div><h3>Node ${index + 1}</h3><span class="node-id">${text(node.deviceId)}</span></div>
+        <span class="node-badge">${stale ? 'stale' : node.ready ? 'ready' : node.state || 'waiting'}</span>
+      </header>
+      <div class="node-primary">
+        <div><span>State</span><strong>${text(node.state)}</strong></div>
+        <div><span>Rate</span><strong>${number(node.frameRateHz).toFixed(1)} Hz</strong></div>
+        <div><span>Age</span><strong>${Number.isFinite(age) ? `${age.toFixed(2)}s` : '—'}</strong></div>
+      </div>
+      <div class="node-section">
+        <h4>Signal</h4>
+        <div class="node-stats">
+          <div><span>Confidence</span><strong>${percent(node.confidence)}</strong></div>
+          <div><span>Motion</span><strong>${number(node.motion).toFixed(4)}</strong></div>
+          <div><span>Baseline</span><strong>${percent(diagnostics.baselineProgress)}</strong></div>
+          <div><span>Activation</span><strong>${percent(diagnostics.activationScore)}</strong></div>
+        </div>
+      </div>
+      <div class="node-section">
+        <h4>Capture</h4>
+        <div class="node-stats">
+          <div><span>Datagrams</span><strong>${number(node.datagrams).toLocaleString()}</strong></div>
+          <div><span>Frames</span><strong>${number(node.frames).toLocaleString()}</strong></div>
+          <div><span>Subcarriers</span><strong>${number(node.subcarrierCount, node.amplitudeProfile?.length || 0).toLocaleString()}</strong></div>
+          <div><span>CSI bytes</span><strong>${number(node.csiLength).toLocaleString()}</strong></div>
+        </div>
+      </div>
+      <div class="node-section">
+        <h4>Packets</h4>
+        <div class="node-stats">
+          <div><span>Loss</span><strong>${number(node.lossPpm).toLocaleString()} ppm</strong></div>
+          <div><span>Invalid</span><strong>${number(node.invalidDatagrams).toLocaleString()}</strong></div>
+          <div><span>Missing</span><strong>${number(node.missingPackets).toLocaleString()}</strong></div>
+          <div><span>Duplicate</span><strong>${number(node.duplicatePackets).toLocaleString()}</strong></div>
+          <div><span>Out of order</span><strong>${number(node.outOfOrderPackets).toLocaleString()}</strong></div>
+        </div>
+      </div>
+    `;
+    if (reasons.length > 0) {
+      const reason = document.createElement('p');
+      reason.className = 'node-reasons';
+      reason.textContent = reasons.join('; ');
+      card.append(reason);
+    }
+    root.append(card);
+  }
+}
+
 function renderMemory(valueId, meterId, freeRaw, totalRaw) {
   const free = number(freeRaw, NaN);
   const total = number(totalRaw, NaN);
@@ -237,11 +314,21 @@ function cpuText(health) {
 
 function updateDiagnosis() {
   const banner = get('diagnosticBanner');
+  const hasNodeStats = Array.isArray(latestNodes?.nodes) && latestNodes.nodes.length > 0;
+  if (!latestDevice?.connected && (latestSignal?.mode === 'fused' || hasNodeStats)) {
+    const datagrams = number(latestSignal?.datagrams);
+    const level = datagrams > 0 ? 'good' : 'warn';
+    const message =
+      datagrams > 0
+        ? 'RF stream is live in four-node mode. Device HTTP telemetry/control is not connected, so ESP32 health fields and controls are unavailable.'
+        : 'Four-node dashboard is running, but no RF datagrams have arrived yet. Device HTTP telemetry/control is optional for this mode.';
+    return setDiagnosis(banner, level, message);
+  }
   if (!latestDevice?.connected)
     return setDiagnosis(
       banner,
       'bad',
-      'Device API is offline. Check the device IP, Wi-Fi, and npm run rf -- --device http://<device-ip>.',
+      'Device HTTP API is offline. Start with --device http://<device-ip> only when you need ESP32 telemetry or controls.',
     );
   const status = latestDevice.status || {};
   const health = latestDevice.health || {};
@@ -340,6 +427,14 @@ async function json(url, options) {
   return value;
 }
 
+async function optionalJson(url) {
+  try {
+    return await json(url);
+  } catch {
+    return null;
+  }
+}
+
 async function control(action, button) {
   const destructive = action === 'reboot' || action === 'ota-apply';
   if (destructive && !window.confirm(`Confirm ${action.replace('-', ' ')}?`)) return;
@@ -415,9 +510,12 @@ async function boot() {
     : 'Start with npm run rf -- --device URL';
   (logs.entries || []).forEach(renderLog);
   renderRecording(await json('/api/recording'));
+  const nodes = await optionalJson('/api/nodes');
+  if (nodes) renderNodes(nodes);
 
   const stream = new EventSource('/events');
   stream.addEventListener('state', (event) => renderSignal(JSON.parse(event.data)));
+  stream.addEventListener('nodes', (event) => renderNodes(JSON.parse(event.data)));
   stream.addEventListener('device', (event) => renderDevice(JSON.parse(event.data)));
   stream.addEventListener('log', (event) => renderLog(JSON.parse(event.data)));
   stream.addEventListener('recording', (event) => renderRecording(JSON.parse(event.data)));
