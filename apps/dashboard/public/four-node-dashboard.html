@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>RF-Sense four-node control center</title>
+    <link rel="stylesheet" href="/four-node-dashboard.css?v=1" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <div class="eyebrow">RF-SENSE</div>
+        <h1>Four-node RF control center</h1>
+        <p>Each receiver is shown independently, with fused activity kept separate.</p>
+      </div>
+      <div class="topbar-status" aria-live="polite">
+        <span class="status-pill"
+          ><i id="streamDot"></i><span id="streamStatus">Connecting</span></span
+        >
+        <span id="fleetStatus" class="status-pill">0 / 4 ready</span>
+      </div>
+    </header>
+
+    <main class="shell">
+      <section class="overview-grid" aria-label="Fused RF overview">
+        <article id="fusedStateCard" class="fused-state-card waiting">
+          <div>
+            <span class="label">Fused RF state</span>
+            <strong id="fusedState">Waiting</strong>
+            <p id="fusedDetail">Waiting for node streams.</p>
+          </div>
+          <div class="fused-confidence">
+            <span>Confidence</span>
+            <strong id="fusedConfidence">0%</strong>
+            <span class="meter"><i id="fusedConfidenceBar"></i></span>
+          </div>
+        </article>
+        <article class="summary-card">
+          <span>Ready nodes</span><strong id="readyNodes">0 / 4</strong
+          ><small id="readinessDetail">No nodes discovered</small>
+        </article>
+        <article class="summary-card">
+          <span>Combined rate</span><strong id="combinedRate">0.0 Hz</strong
+          ><small id="combinedFrames">0 frames</small>
+        </article>
+        <article class="summary-card">
+          <span>Total datagrams</span><strong id="totalDatagrams">0</strong
+          ><small id="invalidDatagrams">0 invalid</small>
+        </article>
+        <article class="summary-card">
+          <span>Node disagreement</span><strong id="disagreement">0%</strong
+          ><small id="contributors">0 contributors</small>
+        </article>
+      </section>
+
+      <section class="section-heading">
+        <div>
+          <span class="eyebrow">LIVE RECEIVERS</span>
+          <h2>Node-by-node streams</h2>
+          <p>Four fixed slots, one card per ESP32 CSI receiver.</p>
+        </div>
+        <button id="resetAllButton" type="button">Relearn all baselines</button>
+      </section>
+
+      <section
+        id="nodeGrid"
+        class="node-grid"
+        aria-live="polite"
+        aria-label="RF node status"
+      ></section>
+
+      <section class="analysis-grid">
+        <article class="panel chart-panel">
+          <div class="panel-heading">
+            <div>
+              <span class="eyebrow">FUSED SUBCARRIERS</span>
+              <h2>Combined CSI amplitude profile</h2>
+            </div>
+            <span id="subcarrierCount" class="muted">0 subcarriers</span>
+          </div>
+          <svg
+            id="fusedProfile"
+            class="large-chart"
+            viewBox="0 0 1000 240"
+            role="img"
+            aria-label="Fused CSI amplitude profile"
+          ></svg>
+        </article>
+
+        <article class="panel chart-panel">
+          <div class="panel-heading">
+            <div>
+              <span class="eyebrow">ROLLING FUSION</span>
+              <h2>Motion and confidence</h2>
+            </div>
+            <span class="chart-legend"
+              ><i class="motion-key"></i>Motion <i class="confidence-key"></i>Confidence</span
+            >
+          </div>
+          <svg
+            id="historyChart"
+            class="large-chart"
+            viewBox="0 0 1000 240"
+            role="img"
+            aria-label="Fused motion and confidence history"
+          ></svg>
+        </article>
+      </section>
+
+      <section class="operations-grid">
+        <article class="panel operations-panel">
+          <div class="panel-heading">
+            <div>
+              <span class="eyebrow">CAPTURE</span>
+              <h2>Training recordings</h2>
+            </div>
+            <span id="recordingBadge" class="badge neutral">Idle</span>
+          </div>
+          <div class="operation-body">
+            <div class="button-row">
+              <button data-recording-label="empty" type="button">Record empty room</button>
+              <button data-recording-label="occupied-moving" type="button">Record moving</button>
+              <button data-recording-label="occupied-stationary" type="button">
+                Record stationary
+              </button>
+              <button id="stopRecordingButton" class="danger" type="button">Stop recording</button>
+            </div>
+            <p id="recordingStatus" class="muted">No recording active.</p>
+          </div>
+        </article>
+
+        <article class="panel operations-panel">
+          <div class="panel-heading">
+            <div>
+              <span class="eyebrow">SYSTEM STATUS</span>
+              <h2>Readiness and limits</h2>
+            </div>
+            <span id="readinessBadge" class="badge neutral">Waiting</span>
+          </div>
+          <div class="operation-body">
+            <div id="diagnosticBanner" class="diagnostic-banner">Waiting for node data.</div>
+            <div id="capabilityList" class="capability-list"></div>
+            <p id="systemCaveat" class="muted">
+              Four RF links indicate disturbance, not identity, pose, exact range, or people count.
+            </p>
+          </div>
+        </article>
+      </section>
+    </main>
+
+    <template id="nodeCardTemplate">
+      <article class="node-card missing">
+        <header class="node-header">
+          <div>
+            <span class="node-slot"></span>
+            <h3 class="node-name"></h3>
+            <code class="node-id"></code>
+          </div>
+          <span class="node-badge badge neutral"></span>
+        </header>
+        <div class="node-signal-row">
+          <div class="node-state-block">
+            <span class="label">RF state</span>
+            <strong class="node-state"></strong>
+            <small class="node-age"></small>
+          </div>
+          <div class="node-rate-block">
+            <span>CSI rate</span><strong class="node-rate"></strong>
+          </div>
+        </div>
+        <div class="node-meter-block">
+          <div><span>Baseline</span><strong class="node-baseline-value"></strong></div>
+          <span class="meter"><i class="node-baseline-bar"></i></span>
+        </div>
+        <div class="node-metrics">
+          <div><span>Confidence</span><strong class="node-confidence"></strong></div>
+          <div><span>Motion</span><strong class="node-motion"></strong></div>
+          <div><span>Activation</span><strong class="node-activation"></strong></div>
+          <div><span>Packet loss</span><strong class="node-loss"></strong></div>
+        </div>
+        <svg
+          class="node-profile"
+          viewBox="0 0 400 90"
+          role="img"
+          aria-label="Node CSI amplitude profile"
+        ></svg>
+        <div class="node-packet-grid">
+          <div><span>Datagrams</span><strong class="node-datagrams"></strong></div>
+          <div><span>Frames</span><strong class="node-frames"></strong></div>
+          <div><span>Invalid</span><strong class="node-invalid"></strong></div>
+          <div><span>Missing</span><strong class="node-missing"></strong></div>
+          <div><span>Duplicate</span><strong class="node-duplicate"></strong></div>
+          <div><span>Out of order</span><strong class="node-out-of-order"></strong></div>
+        </div>
+        <p class="node-reasons"></p>
+        <footer class="node-footer">
+          <span class="node-boot"></span>
+          <button class="node-reset-button" type="button">Relearn baseline</button>
+        </footer>
+      </article>
+    </template>
+
+    <script type="module" src="/four-node-dashboard.js?v=1"></script>
+  </body>
+</html>
