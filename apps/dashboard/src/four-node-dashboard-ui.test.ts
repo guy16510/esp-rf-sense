@@ -10,7 +10,7 @@ afterEach(async () => {
 });
 
 describe('four-node dashboard UI', () => {
-  it('serves the dedicated per-node control center and its assets', async () => {
+  it('serves the per-node control center and D3 room assets', async () => {
     const server = new MultiNodeDashboardServer(new MultiNodeEngine(), {
       host: '127.0.0.1',
       port: 0,
@@ -38,8 +38,26 @@ describe('four-node dashboard UI', () => {
     const scriptResponse = await fetch(`http://127.0.0.1:${port}/four-node-dashboard.js`);
     const script = await scriptResponse.text();
     expect(scriptResponse.status).toBe(200);
-    expect(script).toContain('/api/nodes');
-    expect(script).toContain("new EventSource('/events')");
-    expect(script).toContain('allocateSlots');
+    expect(script).toContain("import './four-node-dashboard-core.js'");
+    expect(script).toContain("import './room-d3.js'");
+
+    const coreResponse = await fetch(`http://127.0.0.1:${port}/four-node-dashboard-core.js`);
+    const core = await coreResponse.text();
+    expect(coreResponse.status).toBe(200);
+    expect(core).toContain('/api/nodes');
+    expect(core).toContain("new EventSource('/events')");
+    expect(core).toContain('allocateSlots');
+
+    const roomResponse = await fetch(`http://127.0.0.1:${port}/room-d3.js`);
+    const room = await roomResponse.text();
+    expect(roomResponse.status).toBe(200);
+    expect(room).toContain('d3.select');
+    expect(room).toContain("new EventSource('/events')");
+    expect(room).toContain('estimateRegion');
+    expect(room).toContain('not verified people counts');
+
+    const roomCssResponse = await fetch(`http://127.0.0.1:${port}/room-d3.css`);
+    expect(roomCssResponse.status).toBe(200);
+    expect(await roomCssResponse.text()).toContain('.rf-workspace');
   });
 });
