@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="dark" />
+  <title>RF-Sense four-node lab</title>
+  <style>
+    :root { font-family: Inter, system-ui, sans-serif; color: #eef2ff; background: #090d16; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: radial-gradient(circle at top, #172033, #090d16 45%); }
+    header { display: flex; justify-content: space-between; gap: 20px; align-items: center; padding: 22px 28px; border-bottom: 1px solid #263148; position: sticky; top: 0; background: rgba(9,13,22,.94); backdrop-filter: blur(14px); z-index: 2; }
+    h1,h2,p { margin: 0; }
+    h1 { font-size: 22px; }
+    .eyebrow { color: #8ca3c7; font-size: 11px; letter-spacing: .14em; text-transform: uppercase; margin-bottom: 5px; }
+    .status { padding: 9px 12px; border-radius: 999px; font-weight: 700; font-size: 13px; background: #5b1d24; color: #ffc2c8; }
+    .status.ready { background: #123b2b; color: #8ff0bd; }
+    main { padding: 24px 28px 44px; max-width: 1600px; margin: auto; }
+    .notice { padding: 14px 16px; border: 1px solid #31405c; background: #111827; border-radius: 12px; margin-bottom: 18px; color: #b9c5d8; }
+    .summary { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 14px; margin-bottom: 18px; }
+    .card { background: rgba(16,23,38,.9); border: 1px solid #28344c; border-radius: 15px; padding: 16px; box-shadow: 0 14px 35px rgba(0,0,0,.22); }
+    .metric { color: #8fa1bd; font-size: 12px; }
+    .value { font-size: 24px; font-weight: 800; margin-top: 5px; }
+    .nodes { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 16px; }
+    .node-head { display: flex; justify-content: space-between; gap: 12px; align-items: center; margin-bottom: 13px; }
+    .pill { font-size: 11px; font-weight: 800; padding: 5px 8px; border-radius: 999px; background: #5b1d24; color: #ffc2c8; }
+    .pill.ready { background: #123b2b; color: #8ff0bd; }
+    .stats { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 9px; margin-bottom: 14px; }
+    .stat { background: #0b1220; border-radius: 10px; padding: 10px; min-width: 0; }
+    .stat span { display: block; font-size: 10px; color: #7f91ad; text-transform: uppercase; letter-spacing: .08em; }
+    .stat strong { display: block; margin-top: 4px; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    canvas { width: 100%; height: 150px; display: block; background: #080d16; border: 1px solid #202b40; border-radius: 10px; }
+    .chart-label { font-size: 11px; color: #8192ac; margin: 12px 0 6px; }
+    .empty { padding: 42px; text-align: center; color: #8899b5; }
+    @media (max-width: 900px) { .summary,.nodes { grid-template-columns: 1fr; } .stats { grid-template-columns: repeat(2,minmax(0,1fr)); } header { align-items: flex-start; } }
+  </style>
+</head>
+<body>
+<header>
+  <div><div class="eyebrow">RF-SENSE REAL CSI</div><h1>Four-node observation lab</h1></div>
+  <div id="readiness" class="status">Waiting for physical nodes</div>
+</header>
+<main>
+  <div class="notice">Each panel is one physical ESP32 device ID. Charts show measured CSI amplitude profile and rolling motion evidence. This is not pose, exact range, or people counting.</div>
+  <section class="summary">
+    <article class="card"><div class="metric">Online nodes</div><div id="online" class="value">0 / 4</div></article>
+    <article class="card"><div class="metric">Fused state</div><div id="fusedState" class="value">Waiting</div></article>
+    <article class="card"><div class="metric">Fused motion</div><div id="fusedMotion" class="value">0.000</div></article>
+    <article class="card"><div class="metric">Disagreement</div><div id="disagreement" class="value">0%</div></article>
+  </section>
+  <section id="nodes" class="nodes"><div class="card empty">No real CSI nodes have reported yet.</div></section>
+</main>
+<script type="module" src="/lab.js"></script>
+</body>
+</html>
