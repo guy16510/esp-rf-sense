@@ -1,6 +1,9 @@
 {
   "extends": "../../tsconfig.base.json",
-  "compilerOptions": { "rootDir": "src", "outDir": "dist" },
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist"
+  },
   "files": [
     "src/activity.ts",
     "src/cli.ts",
@@ -9,8 +12,11 @@
     "src/engine.ts",
     "src/events.ts",
     "src/features.ts",
+    "src/four-node-cli.ts",
     "src/input-buffer.ts",
     "src/model.ts",
+    "src/multi-node-engine.ts",
+    "src/multi-node-web-server.ts",
     "src/numeric-features.ts",
     "src/protocol.ts",
     "src/ring-buffer.ts",
