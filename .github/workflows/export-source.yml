@@ -1,9 +1,9 @@
 name: Export source checkout
 
 on:
-  push:
+  pull_request:
     branches:
-      - codex/research-backed-presence
+      - main
 
 permissions:
   contents: read
