@@ -1,0 +1,32 @@
+name: Apply research presence implementation
+
+on:
+  push:
+    branches:
+      - codex/research-backed-presence
+    paths:
+      - .github/implementation-patch/part-04
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply validated implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .github/implementation-patch/part-* | base64 --decode | xz --decompress > /tmp/research-presence.patch
+          echo "Patch SHA256: $(sha256sum /tmp/research-presence.patch | cut -d' ' -f1)"
+          git apply --check /tmp/research-presence.patch
+          git apply --index /tmp/research-presence.patch
+          git rm -r .github/implementation-patch
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Implement research-backed four-node presence pipeline"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
