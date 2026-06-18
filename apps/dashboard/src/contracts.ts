@@ -29,12 +29,12 @@ export interface DashboardState {
   invalidDatagrams: number;
   mode: 'heuristic' | 'portable-model';
   scores: Record<string, number>;
-  source: DataSource;
-  averageRssi: number | null;
-  csiLength: number;
-  subcarrierCount: number;
-  missingPackets: number;
-  ready: boolean;
+  source?: DataSource;
+  averageRssi?: number | null;
+  csiLength?: number;
+  subcarrierCount?: number;
+  missingPackets?: number;
+  ready?: boolean;
 }
 
 export interface LabReadiness {
