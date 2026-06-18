@@ -6,8 +6,17 @@ export default defineConfig({
   timeout: 30_000,
   retries: 1,
   workers: 1,
-  reporter: [['list'], ['html', { outputFolder: 'artifacts/report', open: 'never' }]],
-  outputDir: 'artifacts/results',
+  reporter: [
+    ['list'],
+    [
+      'html',
+      {
+        outputFolder: 'apps/dashboard/e2e/artifacts/report',
+        open: 'never',
+      },
+    ],
+  ],
+  outputDir: 'apps/dashboard/e2e/artifacts/results',
   use: {
     viewport: { width: 1720, height: 1100 },
     trace: 'retain-on-failure',
