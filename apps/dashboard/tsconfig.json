@@ -7,6 +7,8 @@
   "files": [
     "src/contracts.ts",
     "src/events.ts",
+    "src/lab-server.ts",
+    "src/multi-node-engine.ts",
     "src/node-engine.ts",
     "src/node-server.ts",
     "src/numeric-features.ts",

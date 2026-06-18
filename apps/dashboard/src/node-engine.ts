@@ -7,6 +7,7 @@ interface Sample {
   timestampUs: number;
   receivedAtMs: number;
   amplitude: Float64Array;
+  rssi: number;
 }
 
 export class NodeEngine {
@@ -16,6 +17,11 @@ export class NodeEngine {
   private baselineMean: number | null = null;
   private baselineVariance = 0;
   private baselineSamples = 0;
+  private deviceId: number | null = null;
+  private bootId: number | null = null;
+  private lastPacketSeq: number | null = null;
+  private missingPackets = 0;
+  private csiLength = 0;
 
   constructor(
     private readonly windowFrames = 64,
@@ -26,10 +32,26 @@ export class NodeEngine {
 
   accept(datagram: CsiDatagram, receivedAtMs: number): void {
     this.datagrams++;
+    this.deviceId = datagram.header.deviceId;
+    if (this.bootId !== null && this.bootId !== datagram.header.bootId) {
+      this.lastPacketSeq = null;
+    }
+    this.bootId = datagram.header.bootId;
+    if (this.lastPacketSeq !== null && datagram.header.packetSeq > this.lastPacketSeq + 1) {
+      this.missingPackets += datagram.header.packetSeq - this.lastPacketSeq - 1;
+    }
+    this.lastPacketSeq = datagram.header.packetSeq;
+
     for (const frame of datagram.frames) {
       const amplitude = decodeAmplitude(frame);
       if (amplitude.length === 0) continue;
-      this.samples.push({ timestampUs: frame.timestampUs, receivedAtMs, amplitude });
+      this.csiLength = frame.csi.length;
+      this.samples.push({
+        timestampUs: frame.timestampUs,
+        receivedAtMs,
+        amplitude,
+        rssi: frame.rssi,
+      });
     }
   }
 
@@ -45,36 +67,40 @@ export class NodeEngine {
     const active = activeProbability >= 0.5;
     const latest = samples.at(-1);
     const confidence = active ? activeProbability : 1 - activeProbability;
+    const totalPackets = this.datagrams + this.missingPackets;
+    const lossPpm = totalPackets > 0 ? Math.round((this.missingPackets / totalPackets) * 1_000_000) : 0;
+    const averageRssi = samples.length
+      ? samples.reduce((total, sample) => total + sample.rssi, 0) / samples.length
+      : null;
+
     return {
       timestamp: nowMs / 1000,
       state: samples.length < 2 ? 'waiting' : active ? 'active' : 'clear',
       confidence: samples.length < 2 ? 0 : confidence,
       motion,
       zone: null,
-      bubbles: active
-        ? [
-            {
-              id: 'activity-0',
-              x: 0.5,
-              y: 0.5,
-              radius: 0.08 + confidence * 0.08,
-              confidence,
-              motion,
-              zone: null,
-            },
-          ]
-        : [],
+      bubbles: [],
       amplitudeProfile: amplitudeProfile(amplitudes),
       frameRateHz: frameRate(samples),
-      lossPpm: 0,
+      lossPpm,
       ageSec: latest ? Math.max(0, (nowMs - latest.receivedAtMs) / 1000) : null,
-      deviceId: null,
-      bootId: null,
+      deviceId: this.deviceId === null ? null : String(this.deviceId),
+      bootId: this.bootId === null ? null : String(this.bootId),
       frames: samples.length,
       datagrams: this.datagrams,
       invalidDatagrams: this.invalidDatagrams,
       mode: 'heuristic',
       scores: { active: activeProbability, clear: 1 - activeProbability },
+      source: 'real',
+      averageRssi,
+      csiLength: this.csiLength,
+      subcarrierCount: this.csiLength > 0 ? Math.floor(this.csiLength / 2) : 0,
+      missingPackets: this.missingPackets,
+      ready:
+        samples.length >= 2 &&
+        latest !== undefined &&
+        nowMs - latest.receivedAtMs <= 3000 &&
+        this.csiLength > 0,
     };
   }
 
