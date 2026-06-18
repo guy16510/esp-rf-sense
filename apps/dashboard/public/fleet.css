@@ -1,0 +1,125 @@
+:root {
+  font-family: Inter, system-ui, sans-serif;
+  color: #eef2ff;
+  background: #090d16;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  background: radial-gradient(circle at top, #172033, #090d16 45%);
+}
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 22px 28px;
+  border-bottom: 1px solid #263148;
+}
+header a {
+  color: #9fc5ff;
+}
+h1,
+p {
+  margin: 0;
+}
+small,
+.label {
+  color: #8ca3c7;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+main {
+  max-width: 1500px;
+  margin: auto;
+  padding: 24px;
+}
+.summary,
+.nodes {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+.nodes {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 16px;
+}
+article,
+.notice {
+  background: #101726;
+  border: 1px solid #28344c;
+  border-radius: 14px;
+  padding: 16px;
+}
+.summary span {
+  display: block;
+  color: #8fa1bd;
+  font-size: 12px;
+}
+.summary strong {
+  display: block;
+  font-size: 24px;
+  margin-top: 5px;
+}
+.notice {
+  margin-top: 16px;
+  color: #b9c5d8;
+}
+.node-head {
+  display: flex;
+  justify-content: space-between;
+}
+.pill {
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: #5b1d24;
+  color: #ffc2c8;
+  font-size: 11px;
+}
+.pill.ready {
+  background: #123b2b;
+  color: #8ff0bd;
+}
+.stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-top: 14px;
+}
+.stat {
+  background: #0b1220;
+  border-radius: 9px;
+  padding: 10px;
+}
+.stat span {
+  display: block;
+  font-size: 10px;
+  color: #7f91ad;
+}
+.stat strong {
+  display: block;
+  margin-top: 4px;
+}
+.actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}
+button {
+  background: #24324a;
+  color: #fff;
+  border: 1px solid #40506d;
+  border-radius: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+@media (max-width: 900px) {
+  .summary,
+  .nodes {
+    grid-template-columns: 1fr;
+  }
+  .stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}

@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>RF Sense Fleet</title>
+    <link rel="stylesheet" href="/fleet.css" />
+  </head>
+  <body>
+    <header>
+      <div>
+        <small>RF-SENSE</small>
+        <h1>Four-node fleet</h1>
+      </div>
+      <a href="/">Signal view</a>
+    </header>
+    <main>
+      <section class="summary">
+        <article>
+          <span>Readiness</span><strong id="ready">Waiting</strong>
+        </article>
+        <article>
+          <span>Online nodes</span><strong id="online">0 / 4</strong>
+        </article>
+        <article>
+          <span>Fused state</span><strong id="state">Waiting</strong>
+        </article>
+        <article>
+          <span>Disagreement</span><strong id="disagreement">0%</strong>
+        </article>
+      </section>
+      <div id="reason" class="notice">Waiting for CSI.</div>
+      <section id="nodes" class="nodes"></section>
+    </main>
+    <script type="module" src="/fleet.js"></script>
+  </body>
+</html>
