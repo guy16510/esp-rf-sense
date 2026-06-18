@@ -11,7 +11,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 test('renders four live receivers and the D3 room view', async ({ page }) => {
-  await page.goto(baseURL, { waitUntil: 'networkidle' });
+  await page.goto(baseURL, { waitUntil: 'domcontentloaded' });
 
   await expect(page.locator('#roomD3')).toBeVisible();
   await expect(page.locator('.rf-node')).toHaveCount(4);
@@ -32,8 +32,8 @@ test('renders four live receivers and the D3 room view', async ({ page }) => {
   await page.screenshot({ path: 'artifacts/control-center.png', fullPage: true });
 });
 
-test('blocks recording until all streams are ready', async ({ page, request }) => {
-  await page.goto(baseURL);
+test('starts and stops a capture after all streams are ready', async ({ page, request }) => {
+  await page.goto(baseURL, { waitUntil: 'domcontentloaded' });
   await expect(page.locator('[data-recording-label="empty"]')).toBeEnabled({ timeout: 10_000 });
 
   const response = await request.post(`${baseURL}/api/recording/start`, {
