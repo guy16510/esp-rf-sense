@@ -29,7 +29,10 @@ test('renders four live receivers and the D3 room view', async ({ page }) => {
     .toBeGreaterThan(0);
 
   await expect(page.locator('.rf-room-footer')).toContainText('not verified people counts');
-  await page.screenshot({ path: 'artifacts/control-center.png', fullPage: true });
+  await page.screenshot({
+    path: 'apps/dashboard/e2e/artifacts/control-center.png',
+    fullPage: true,
+  });
 });
 
 test('starts and stops a capture after all streams are ready', async ({ page, request }) => {
