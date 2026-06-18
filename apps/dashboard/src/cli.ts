@@ -1,5 +1,6 @@
 import { createSocket } from 'node:dgram';
 
+import { DashboardRecorder } from './dashboard-recorder.js';
 import { DashboardServer } from './web-server.js';
 import { RealtimeEngine } from './engine.js';
 import { loadPortableModel } from './model.js';
@@ -12,6 +13,7 @@ interface Flags {
   httpPort: number;
   intervalMs: number;
   windowFrames: number;
+  recordingsDir: string;
   motionThreshold?: number;
   modelPath?: string;
   deviceUrl?: string;
@@ -30,10 +32,12 @@ async function main(): Promise<void> {
     ...(flags.motionThreshold === undefined ? {} : { motionThreshold: flags.motionThreshold }),
     ...(model ? { model } : {}),
   });
+  const recorder = new DashboardRecorder(flags.recordingsDir);
   const dashboard = new DashboardServer(engine, {
     host: flags.httpHost,
     port: flags.httpPort,
     intervalMs: flags.intervalMs,
+    recorder,
     ...(flags.deviceUrl ? { deviceUrl: flags.deviceUrl } : {}),
   });
   const socket = createSocket({ type: 'udp4', reuseAddr: true });
@@ -43,7 +47,9 @@ async function main(): Promise<void> {
       engine.recordInvalid();
       return;
     }
-    engine.accept(result.datagram, Date.now());
+    const receivedAt = Date.now();
+    engine.accept(result.datagram, receivedAt);
+    recorder.write(message, result.datagram, receivedAt);
   });
   socket.on('error', (error) => console.error(`[dashboard] UDP error: ${error.message}`));
 
@@ -68,6 +74,7 @@ async function main(): Promise<void> {
     stopping = true;
     console.error(`\n[dashboard] ${signal}, stopping`);
     socket.close();
+    await recorder.stop(false);
     await dashboard.stop();
     process.exit(0);
   };
@@ -103,6 +110,7 @@ function parseFlags(argv: string[]): Flags {
     httpPort: numberFlag(values, 'http-port', 8080),
     intervalMs: Math.max(50, numberFlag(values, 'interval-ms', 200)),
     windowFrames: Math.max(8, numberFlag(values, 'window', 64)),
+    recordingsDir: values.get('recordings-dir') ?? 'recordings/dashboard',
     ...(threshold === undefined ? {} : { motionThreshold: Number(threshold) }),
     ...(modelPath === undefined ? {} : { modelPath }),
     ...(deviceUrl === undefined ? {} : { deviceUrl }),
@@ -127,6 +135,7 @@ Options:
   --http-port PORT         HTTP dashboard port (default 8080)
   --interval-ms MS         Push interval in milliseconds (default 200)
   --window FRAMES          Frames per inference window (default 64)
+  --recordings-dir DIR     Where dashboard recordings are written (default recordings/dashboard)
   --motion-threshold N     Override heuristic motion threshold
   --model PATH             Portable model bundle
   --device URL             ESP32 control API base URL for live logs (or RF_SENSE_DEVICE)

@@ -53,15 +53,17 @@ export class RealtimeEngine {
       timestamp: nowMs / 1000,
       ...this.latestResult,
       bubbles: active
-        ? [{
-            id: 'rf-disturbance',
-            x: 0.5,
-            y: 0.5,
-            radius: Number((0.08 + this.latestResult.confidence * 0.08).toFixed(4)),
-            confidence: this.latestResult.confidence,
-            motion: this.latestResult.motion,
-            zone: this.latestResult.zone,
-          }]
+        ? [
+            {
+              id: 'rf-disturbance',
+              x: 0.5,
+              y: 0.5,
+              radius: Number((0.08 + this.latestResult.confidence * 0.08).toFixed(4)),
+              confidence: this.latestResult.confidence,
+              motion: this.latestResult.motion,
+              zone: this.latestResult.zone,
+            },
+          ]
         : [],
       amplitudeProfile: amplitudeProfile(frames.map((frame) => frame.amplitude)),
       frameRateHz: frameRate(frames),

@@ -3,6 +3,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { fileURLToPath } from 'node:url';
 
 import type { DashboardState, DeviceLogEntry, DeviceTelemetry } from './contracts.js';
+import type { DashboardRecorder } from './dashboard-recorder.js';
 import { EventStore } from './events.js';
 import type { RealtimeEngine } from './engine.js';
 
@@ -33,6 +34,7 @@ export interface DashboardServerOptions {
   port: number;
   intervalMs: number;
   deviceUrl?: string;
+  recorder?: DashboardRecorder;
 }
 
 export class DashboardServer {
@@ -92,6 +94,13 @@ export class DashboardServer {
     this.history.push({ ...this.state, amplitudeProfile: [], scores: {} });
     if (this.history.length > 1800) this.history.shift();
     this.broadcast('state', this.state);
+    if (this.options.recorder?.status().active) {
+      if (this.options.recorder.shouldAutoStop()) {
+        void this.options.recorder.stop(true).then((status) => this.broadcast('recording', status));
+        return;
+      }
+      this.broadcast('recording', this.options.recorder.status());
+    }
   }
 
   private async pollDevice(): Promise<void> {
@@ -172,7 +181,11 @@ export class DashboardServer {
       if (request.method === 'GET' && url.pathname === '/api/history') {
         const seconds = Math.min(600, Math.max(1, Number(url.searchParams.get('seconds') ?? 120)));
         const cutoff = Date.now() / 1000 - seconds;
-        this.sendJson(response, 200, this.history.filter((item) => item.timestamp >= cutoff));
+        this.sendJson(
+          response,
+          200,
+          this.history.filter((item) => item.timestamp >= cutoff),
+        );
         return;
       }
       if (request.method === 'GET' && url.pathname === '/api/meta') {
@@ -189,7 +202,8 @@ export class DashboardServer {
             exactLocation: false,
             distance: false,
           },
-          disclaimer: 'A single RF link shows anonymous signal disturbance, not a measured person location.',
+          disclaimer:
+            'A single RF link shows anonymous signal disturbance, not a measured person location.',
         });
         return;
       }
@@ -203,6 +217,27 @@ export class DashboardServer {
           latestSequence: this.lastLogSequence,
           entries: this.logs,
         });
+        return;
+      }
+      if (request.method === 'GET' && url.pathname === '/api/recording') {
+        this.sendJson(response, 200, this.recordingStatus());
+        return;
+      }
+      if (request.method === 'POST' && url.pathname === '/api/recording/start') {
+        const body = await this.readBody(request);
+        const status = await this.requireRecorder().start(
+          String(body.label ?? 'recording'),
+          Number(body.targetSeconds ?? 90),
+          Number(body.targetFrames ?? 2000),
+        );
+        this.broadcast('recording', status);
+        this.sendJson(response, 201, status);
+        return;
+      }
+      if (request.method === 'POST' && url.pathname === '/api/recording/stop') {
+        const status = await this.requireRecorder().stop(true);
+        this.broadcast('recording', status);
+        this.sendJson(response, 200, status);
         return;
       }
       if (request.method === 'POST' && url.pathname === '/api/baseline/reset') {
@@ -252,8 +287,33 @@ export class DashboardServer {
     });
     response.write(`event: state\ndata: ${JSON.stringify(this.state)}\n\n`);
     response.write(`event: device\ndata: ${JSON.stringify(this.device)}\n\n`);
+    response.write(`event: recording\ndata: ${JSON.stringify(this.recordingStatus())}\n\n`);
     this.clients.add(response);
     response.on('close', () => this.clients.delete(response));
+  }
+
+  private recordingStatus(): unknown {
+    return (
+      this.options.recorder?.status() ?? {
+        active: false,
+        label: null,
+        name: null,
+        startedAt: null,
+        finishedAt: null,
+        datagrams: 0,
+        frames: 0,
+        bytes: 0,
+        binPath: null,
+        jsonlPath: null,
+        metaPath: null,
+        error: 'dashboard recorder is not configured',
+      }
+    );
+  }
+
+  private requireRecorder(): DashboardRecorder {
+    if (!this.options.recorder) throw new Error('dashboard recorder is not configured');
+    return this.options.recorder;
   }
 
   private async sendStatic(response: ServerResponse, name: string): Promise<void> {

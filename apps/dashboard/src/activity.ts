@@ -32,7 +32,9 @@ export class ActivityClassifier {
     if (frames.length < 2) return this.result('waiting', 0, motion, 0);
 
     if (this.model && frames.length >= this.model.bundle.window) {
-      const prediction = this.model.predict(windowFeatures(frames.slice(-this.model.bundle.window)));
+      const prediction = this.model.predict(
+        windowFeatures(frames.slice(-this.model.bundle.window)),
+      );
       const clear = /empty|clear/iu.test(prediction.state);
       return {
         state: clear ? 'clear' : 'active',
@@ -118,7 +120,10 @@ export class ActivityClassifier {
       zone: null,
       mode: 'heuristic',
       scores: state === 'baseline' ? { learning: confidence } : { active: score, clear: 1 - score },
-      diagnostics: this.diagnostics(score, this.threshold !== undefined || this.samples >= REQUIRED),
+      diagnostics: this.diagnostics(
+        score,
+        this.threshold !== undefined || this.samples >= REQUIRED,
+      ),
     };
   }
 
