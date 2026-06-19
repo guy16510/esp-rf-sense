@@ -11,7 +11,6 @@ export interface XYTrainingExample extends XYPoint {
   packetOverlap: number;
   empty: boolean;
 }
-
 export interface XYPrediction extends XYPoint {
   uncertaintyMeters: number;
   accepted: boolean;
@@ -19,7 +18,6 @@ export interface XYPrediction extends XYPoint {
   receiverCount: number;
   packetOverlap: number;
 }
-
 export interface XYModel {
   examples: XYTrainingExample[];
   featureMean: number[];
@@ -27,7 +25,6 @@ export interface XYModel {
   densityThreshold: number;
   uncertaintyThreshold: number;
 }
-
 export interface ValidationSummary {
   medianErrorMeters: number;
   p90ErrorMeters: number;
@@ -46,14 +43,13 @@ const receiverPositions: Record<ReceiverSlot, XYPoint> = {
 };
 const slots: ReceiverSlot[] = ['A', 'B', 'C', 'D'];
 
-function random(seed: number): () => number {
+function seeded(seed: number): () => number {
   let state = seed >>> 0;
   return () => {
     state = (1664525 * state + 1013904223) >>> 0;
     return state / 0x100000000;
   };
 }
-
 function gaussian(rng: () => number): number {
   const u = Math.max(1e-12, rng());
   const v = Math.max(1e-12, rng());
@@ -65,21 +61,23 @@ export function simulateFourReceiverExample(
   seed: number,
   metadata: Partial<Omit<XYTrainingExample, keyof XYPoint | 'features'>> = {},
 ): XYTrainingExample {
-  const rng = random(seed);
-  const mask = metadata.receiverCount === 3 ? (seed % 4) : -1;
-  const perReceiver = slots.flatMap((slot, index) => {
-    if (index === mask) return [0, 0, 0, 0, 0];
+  const rng = seeded(seed);
+  const missing = metadata.receiverCount === 3 ? seed % 4 : -1;
+  const receiverFeatures = slots.flatMap((slot, index) => {
+    if (index === missing) return [0, 0, 0, 0, 0];
     const receiver = receiverPositions[slot];
     const dx = point.xMeters - receiver.xMeters;
     const dy = point.yMeters - receiver.yMeters;
-    const distance = Math.sqrt(dx * dx + dy * dy) + 0.15;
-    const rssi = -34 - 17 * Math.log10(distance) + gaussian(rng) * 0.35;
-    const amplitude = 1 / distance + gaussian(rng) * 0.008;
-    const gradientX = dx / (distance * distance) + gaussian(rng) * 0.004;
-    const gradientY = dy / (distance * distance) + gaussian(rng) * 0.004;
-    return [rssi, amplitude, gradientX, gradientY, 1];
+    const distance = Math.hypot(dx, dy) + 0.15;
+    return [
+      -34 - 17 * Math.log10(distance) + gaussian(rng) * 0.35,
+      1 / distance + gaussian(rng) * 0.008,
+      dx / (distance * distance) + gaussian(rng) * 0.004,
+      dy / (distance * distance) + gaussian(rng) * 0.004,
+      1,
+    ];
   });
-  const rssi = slots.map((_slot, index) => perReceiver[index * 5] ?? 0);
+  const rssi = slots.map((_slot, index) => receiverFeatures[index * 5] ?? 0);
   const cross = [
     rssi[0]! - rssi[1]!, rssi[0]! - rssi[2]!, rssi[0]! - rssi[3]!,
     rssi[1]! - rssi[2]!, rssi[1]! - rssi[3]!, rssi[2]! - rssi[3]!,
@@ -87,7 +85,7 @@ export function simulateFourReceiverExample(
   return {
     xMeters: point.xMeters,
     yMeters: point.yMeters,
-    features: [...perReceiver, ...cross],
+    features: [...receiverFeatures, ...cross],
     recordingId: metadata.recordingId ?? `recording-${seed}`,
     subjectId: metadata.subjectId ?? `person-${seed % 2}`,
     day: metadata.day ?? `2026-06-${19 + (seed % 3)}`,
@@ -135,7 +133,7 @@ export function trainXYModel(examples: XYTrainingExample[]): XYModel {
     examples: occupied,
     featureMean,
     featureScale,
-    densityThreshold: quantile(nearestDistances, 0.99) * 3,
+    densityThreshold: quantile(nearestDistances, 0.99) * 1.5,
     uncertaintyThreshold: 0.75,
   };
 }
@@ -161,7 +159,9 @@ export function predictXY(model: XYModel, example: XYTrainingExample): XYPredict
     return sum + weights[index]! * (dx * dx + dy * dy);
   }, 0) / weightSum);
   const uncertaintyMeters = Math.max(0.08, disagreement + nearest * 0.12);
-  if (uncertaintyMeters > model.uncertaintyThreshold) return { xMeters, yMeters, uncertaintyMeters, accepted: false, rejectionReason: 'high-uncertainty', receiverCount: example.receiverCount, packetOverlap: example.packetOverlap };
+  if (uncertaintyMeters > model.uncertaintyThreshold) {
+    return { xMeters, yMeters, uncertaintyMeters, accepted: false, rejectionReason: 'high-uncertainty', receiverCount: example.receiverCount, packetOverlap: example.packetOverlap };
+  }
   return { xMeters, yMeters, uncertaintyMeters, accepted: true, rejectionReason: null, receiverCount: example.receiverCount, packetOverlap: example.packetOverlap };
 }
 
@@ -170,7 +170,14 @@ export function validateSyntheticXY(model: XYModel): ValidationSummary {
   let seed = 50000;
   for (let x = 0.65; x <= 3.35; x += 0.45) {
     for (let y = 0.65; y <= 3.35; y += 0.45) {
-      heldOut.push(simulateFourReceiverExample({ xMeters: x, yMeters: y }, seed++, { recordingId: `held-${seed}`, subjectId: 'person-held-out', day: '2026-06-25', orientationDegrees: 45, receiverCount: seed % 5 === 0 ? 3 : 4, packetOverlap: 0.92 }));
+      heldOut.push(simulateFourReceiverExample({ xMeters: x, yMeters: y }, seed++, {
+        recordingId: `held-${seed}`,
+        subjectId: 'person-held-out',
+        day: '2026-06-25',
+        orientationDegrees: 45,
+        receiverCount: seed % 5 === 0 ? 3 : 4,
+        packetOverlap: 0.92,
+      }));
     }
   }
   const predictions = heldOut.map((example) => ({ example, prediction: predictXY(model, example) }));
@@ -178,16 +185,13 @@ export function validateSyntheticXY(model: XYModel): ValidationSummary {
   const errors = accepted.map(({ example, prediction }) => Math.hypot(prediction.xMeters - example.xMeters, prediction.yMeters - example.yMeters));
   const empty = Array.from({ length: 100 }, (_, index) => simulateFourReceiverExample({ xMeters: 2, yMeters: 2 }, 70000 + index, { empty: true }));
   const ood = Array.from({ length: 100 }, (_, index) => simulateFourReceiverExample({ xMeters: 8 + index / 50, yMeters: 8 }, 80000 + index));
-  const emptyAccepted = empty.filter((example) => predictXY(model, example).accepted).length / empty.length;
-  const oodRejected = ood.filter((example) => !predictXY(model, example).accepted).length / ood.length;
-  const acceptedThreeReceiver = accepted.filter((item) => item.example.receiverCount >= 3).length / Math.max(1, accepted.length);
   const summary = {
     medianErrorMeters: quantile(errors, 0.5),
     p90ErrorMeters: quantile(errors, 0.9),
     acceptedCoverage: accepted.length / heldOut.length,
-    falseAcceptedEmptyRate: emptyAccepted,
-    oodRejectionRate: oodRejected,
-    threeReceiverAcceptedRate: acceptedThreeReceiver,
+    falseAcceptedEmptyRate: empty.filter((example) => predictXY(model, example).accepted).length / empty.length,
+    oodRejectionRate: ood.filter((example) => !predictXY(model, example).accepted).length / ood.length,
+    threeReceiverAcceptedRate: accepted.filter((item) => item.example.receiverCount >= 3).length / Math.max(1, accepted.length),
     passed: false,
   };
   summary.passed = summary.medianErrorMeters <= 0.75 && summary.p90ErrorMeters <= 1.5 && summary.falseAcceptedEmptyRate <= 0.05 && summary.oodRejectionRate >= 0.9 && summary.threeReceiverAcceptedRate >= 0.95;
@@ -200,4 +204,8 @@ function rejected(example: XYTrainingExample, rejectionReason: string): XYPredic
 function normalize(values: number[], mean: number[], scale: number[]): number[] { return values.map((value, index) => (value - mean[index]!) / scale[index]!); }
 function squaredDistance(left: number[], right: number[]): number { return average(left.map((value, index) => (value - right[index]!) ** 2)); }
 function average(values: number[]): number { return values.reduce((sum, value) => sum + value, 0) / Math.max(1, values.length); }
-function quantile(values: number[], amount: number): number { if (!values.length) return Infinity; const sorted = [...values].sort((a, b) => a - b); return sorted[Math.min(sorted.length - 1, Math.floor(amount * (sorted.length - 1)))]!; }
+function quantile(values: number[], amount: number): number {
+  if (!values.length) return Infinity;
+  const sorted = [...values].sort((left, right) => left - right);
+  return sorted[Math.min(sorted.length - 1, Math.floor(amount * (sorted.length - 1)))]!;
+}
