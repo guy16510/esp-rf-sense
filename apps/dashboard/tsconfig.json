@@ -22,6 +22,7 @@
     "src/prototype-training.ts",
     "src/ring-buffer.ts",
     "src/room-geometry.ts",
+    "src/room-setup-state.ts",
     "src/simulated-xy-pipeline.ts",
     "src/web-server.ts"
   ]
