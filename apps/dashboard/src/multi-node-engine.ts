@@ -1,4 +1,4 @@
-import type { DashboardState } from './contracts.js';
+import type { DashboardState, PositionEstimate } from './contracts.js';
 import type { PortablePrototypeModel } from './model.js';
 import { RealtimeEngine, type EngineOptions } from './engine.js';
 import type { CsiDatagram } from './protocol.js';
@@ -229,14 +229,33 @@ function fuse(
   const confidence =
     state === 'active' ? activeProbability : state === 'clear' ? 1 - activeProbability : 0;
   const profileNodes = readyNodes.length > 0 ? readyNodes : allNodes;
+  const position = fusePositionEstimates(readyNodes);
+  const modelTarget = readyNodes.find((node) => node.modelTarget === 'position')
+    ? 'position'
+    : readyNodes.find((node) => node.modelTarget)?.modelTarget;
+  const bubbles =
+    position?.accepted && position.x !== null && position.y !== null
+      ? [
+          {
+            id: 'fused-position-estimate',
+            x: position.x,
+            y: position.y,
+            radius: Number((0.07 + (1 - position.confidence) * 0.08).toFixed(4)),
+            confidence: position.confidence,
+            motion,
+            zone: position.zone,
+          },
+        ]
+      : [];
 
   return {
     timestamp: nowMs / 1000,
     state,
     confidence,
     motion,
-    zone: null,
-    bubbles: [],
+    zone: position?.accepted ? position.zone : null,
+    position,
+    bubbles,
     amplitudeProfile: fuseAmplitudeProfile(profileNodes),
     frameRateHz: weighted.weight > 0 ? weighted.rate / weighted.weight : 0,
     lossPpm: readyNodes.length > 0 ? Math.max(...readyNodes.map((node) => node.lossPpm)) : 0,
@@ -247,6 +266,7 @@ function fuse(
     datagrams: allNodes.reduce((sum, node) => sum + node.datagrams, 0),
     invalidDatagrams: allNodes.reduce((sum, node) => sum + node.invalidDatagrams, 0),
     mode: 'fused',
+    ...(modelTarget ? { modelTarget } : {}),
     scores: { active: activeProbability, clear: 1 - activeProbability },
     diagnostics: {
       baselineReady:
@@ -265,6 +285,84 @@ function fuse(
     readinessReasons,
     contributingNodes: readyNodes.map((node) => node.deviceId ?? 'unknown'),
     disagreement,
+  };
+}
+
+export function fusePositionEstimates(nodes: readonly DashboardState[]): PositionEstimate | null {
+  const positionNodes = nodes.filter((node) => node.modelTarget === 'position');
+  if (positionNodes.length === 0) return null;
+  const accepted = positionNodes.filter(
+    (node) =>
+      node.position?.accepted &&
+      node.position.zone &&
+      node.position.x !== null &&
+      node.position.y !== null,
+  );
+  if (accepted.length === 0) {
+    return {
+      accepted: false,
+      zone: null,
+      x: null,
+      y: null,
+      confidence: 0,
+      margin: 0,
+      contributors: 0,
+      agreement: 0,
+      reason: positionNodes.every((node) => node.state === 'clear')
+        ? 'room classified as clear'
+        : 'no receiver accepted a trained position',
+    };
+  }
+
+  const votes = new Map<
+    string,
+    { weight: number; confidence: number; margin: number; x: number; y: number; contributors: number }
+  >();
+  for (const node of accepted) {
+    const estimate = node.position!;
+    const zone = estimate.zone!;
+    const quality = Math.max(0.05, 1 - Math.min(1, node.lossPpm / 1_000_000));
+    const weight = Math.max(0.01, estimate.confidence * quality);
+    const vote = votes.get(zone) ?? {
+      weight: 0,
+      confidence: 0,
+      margin: 0,
+      x: 0,
+      y: 0,
+      contributors: 0,
+    };
+    vote.weight += weight;
+    vote.confidence += estimate.confidence * weight;
+    vote.margin += estimate.margin * weight;
+    vote.x += estimate.x! * weight;
+    vote.y += estimate.y! * weight;
+    vote.contributors++;
+    votes.set(zone, vote);
+  }
+
+  const ordered = [...votes.entries()].sort((left, right) => right[1].weight - left[1].weight);
+  const [zone, winner] = ordered[0]!;
+  const totalWeight = ordered.reduce((sum, [, vote]) => sum + vote.weight, 0) || 1;
+  const agreement = winner.weight / totalWeight;
+  const requiredContributors = Math.min(2, positionNodes.length);
+  const isAccepted = winner.contributors >= requiredContributors && agreement >= 0.55;
+  const reason =
+    winner.contributors < requiredContributors
+      ? `position needs ${requiredContributors} agreeing receivers`
+      : agreement < 0.55
+        ? 'receiver position votes do not agree'
+        : null;
+
+  return {
+    accepted: isAccepted,
+    zone: isAccepted ? zone : null,
+    x: isAccepted ? winner.x / winner.weight : null,
+    y: isAccepted ? winner.y / winner.weight : null,
+    confidence: Math.max(0, Math.min(1, winner.confidence / winner.weight)),
+    margin: Math.max(0, Math.min(1, winner.margin / winner.weight)),
+    contributors: winner.contributors,
+    agreement,
+    reason,
   };
 }
 
