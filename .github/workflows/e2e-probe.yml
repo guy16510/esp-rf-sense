@@ -1,0 +1,29 @@
+name: e2e-probe
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Run focused browser probe
+        shell: bash
+        run: |
+          git clone --quiet --branch position-ready https://github.com/guy16510/esp-rf-sense.git repo
+          cd repo
+          npm ci --silent
+          npm install --silent --no-save @playwright/test@1.61.0 d3@7.9.0
+          npm run build --silent
+          npx playwright install chromium >/dev/null 2>&1
+          node apps/dashboard/dist/four-node-cli.js --http-host 127.0.0.1 --http-port 8080 --udp-host 127.0.0.1 --udp-port 5566 --interval-ms 100 >/tmp/dashboard.log 2>&1 &
+          node apps/dashboard/e2e/simulator.mjs >/tmp/simulator.log 2>&1 &
+          for attempt in $(seq 1 40); do
+            curl --fail --silent http://127.0.0.1:8080/api/nodes >/dev/null && break
+            sleep 0.25
+          done
+          RF_DASHBOARD_URL=http://127.0.0.1:8080 npx playwright test --config apps/dashboard/e2e/playwright.config.mjs --reporter=line
