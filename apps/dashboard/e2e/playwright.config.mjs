@@ -11,12 +11,12 @@ export default defineConfig({
     [
       'html',
       {
-        outputFolder: 'apps/dashboard/e2e/artifacts/report',
+        outputFolder: 'artifacts/report',
         open: 'never',
       },
     ],
   ],
-  outputDir: 'apps/dashboard/e2e/artifacts/results',
+  outputDir: 'artifacts/results',
   use: {
     viewport: { width: 1720, height: 1100 },
     trace: 'retain-on-failure',
