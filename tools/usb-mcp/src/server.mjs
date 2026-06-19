@@ -9,23 +9,31 @@ export function createServer({ serialManager = new SerialManager(), host = "127.
       sendJson(res, 404, { error: "not found" });
       return;
     }
+
     if (req.method === "GET") {
-      sendJson(res, 200, {
-        name: "esp-rf-sense-usb-mcp",
-        endpoint: "/mcp",
-        transport: "streamable-http",
-        tools: ["serial_list_devices", "serial_open", "serial_read"],
-      });
+      res.writeHead(405, { allow: "POST", "cache-control": "no-store" });
+      res.end();
       return;
     }
+
     if (req.method !== "POST") {
-      sendJson(res, 405, { error: "method not allowed" });
+      res.writeHead(405, { allow: "POST", "cache-control": "no-store" });
+      res.end();
       return;
     }
+
     try {
       const body = await readRequestBody(req);
       const message = JSON.parse(body);
-      sendJson(res, 200, await handleMcp(message));
+      const response = await handleMcp(message);
+
+      if (response === null) {
+        res.writeHead(202, { "cache-control": "no-store" });
+        res.end();
+        return;
+      }
+
+      sendJson(res, 200, response);
     } catch (err) {
       sendJson(res, 400, {
         jsonrpc: "2.0",
@@ -34,11 +42,16 @@ export function createServer({ serialManager = new SerialManager(), host = "127.
       });
     }
   });
+
   return {
     server,
     listen: () =>
-      new Promise((resolve) => {
-        server.listen(port, host, () => resolve(server.address()));
+      new Promise((resolve, reject) => {
+        server.once("error", reject);
+        server.listen(port, host, () => {
+          server.off("error", reject);
+          resolve(server.address());
+        });
       }),
   };
 }
@@ -53,8 +66,16 @@ function sendJson(res, status, body) {
 
 async function readRequestBody(req) {
   const chunks = [];
+  let bytes = 0;
+  const maxBytes = 1024 * 1024;
+
   for await (const chunk of req) {
+    bytes += chunk.length;
+    if (bytes > maxBytes) {
+      throw new Error("request body exceeds 1 MiB");
+    }
     chunks.push(chunk);
   }
+
   return Buffer.concat(chunks).toString("utf8");
 }
