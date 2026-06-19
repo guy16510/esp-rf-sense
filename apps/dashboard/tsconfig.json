@@ -20,7 +20,9 @@
     "src/multi-node-web-server.ts",
     "src/numeric-features.ts",
     "src/protocol.ts",
+    "src/prototype-training.ts",
     "src/ring-buffer.ts",
+    "src/room-geometry.ts",
     "src/web-server.ts"
   ]
 }
