@@ -16,6 +16,7 @@ const STATIC_FILES = new Map<string, { root: string; name: string }>([
   ['/four-node-dashboard.css', { root: APP_PUBLIC_ROOT, name: 'four-node-dashboard.css' }],
   ['/four-node-dashboard.js', { root: APP_PUBLIC_ROOT, name: 'four-node-dashboard.js' }],
   ['/four-node-dashboard-core.js', { root: APP_PUBLIC_ROOT, name: 'four-node-dashboard-core.js' }],
+  ['/dashboard-stream.js', { root: APP_PUBLIC_ROOT, name: 'dashboard-stream.js' }],
   ['/room-d3.js', { root: APP_PUBLIC_ROOT, name: 'room-d3.js' }],
   ['/room-d3.css', { root: APP_PUBLIC_ROOT, name: 'room-d3.css' }],
   ['/fleet', { root: APP_PUBLIC_ROOT, name: 'fleet.html' }],
@@ -53,6 +54,7 @@ export class MultiNodeDashboardServer {
   private timer: NodeJS.Timeout | null = null;
   private state: MultiNodeSnapshot;
   private modelStatus: ModelStatus;
+  private sequence = 0;
 
   constructor(
     private readonly engine: MultiNodeEngine,
@@ -97,11 +99,13 @@ export class MultiNodeDashboardServer {
 
   private publish(): void {
     this.state = this.engine.snapshot();
+    this.sequence++;
     const fused = this.state.fused;
     this.history.push({ ...fused, amplitudeProfile: [], scores: {} });
     if (this.history.length > 1800) this.history.shift();
-    this.broadcast('state', fused);
-    this.broadcast('nodes', this.state);
+    this.broadcast('snapshot', this.snapshotPayload(this.state));
+    this.broadcast('state', { ...fused, sequence: this.sequence });
+    this.broadcast('nodes', this.snapshotPayload(this.state));
     if (this.options.recorder?.status().active) {
       if (this.options.recorder.shouldAutoStop()) {
         void this.options.recorder.stop(true).then((status) => this.broadcast('recording', status));
@@ -122,7 +126,7 @@ export class MultiNodeDashboardServer {
       if (request.method === 'GET' && url.pathname === '/api/state')
         return void this.sendJson(response, 200, this.state.fused);
       if (request.method === 'GET' && url.pathname === '/api/nodes')
-        return void this.sendJson(response, 200, this.withSlots(this.state));
+        return void this.sendJson(response, 200, this.snapshotPayload(this.state));
       if (request.method === 'GET' && url.pathname === '/api/readiness')
         return void this.sendJson(response, 200, this.state.readiness);
       if (request.method === 'GET' && url.pathname === '/api/device')
@@ -277,8 +281,13 @@ export class MultiNodeDashboardServer {
       Connection: 'keep-alive',
       'X-Accel-Buffering': 'no',
     });
-    response.write(`event: state\ndata: ${JSON.stringify(this.state.fused)}\n\n`);
-    response.write(`event: nodes\ndata: ${JSON.stringify(this.withSlots(this.state))}\n\n`);
+    response.write(
+      `event: snapshot\ndata: ${JSON.stringify(this.snapshotPayload(this.state))}\n\n`,
+    );
+    response.write(
+      `event: state\ndata: ${JSON.stringify({ ...this.state.fused, sequence: this.sequence })}\n\n`,
+    );
+    response.write(`event: nodes\ndata: ${JSON.stringify(this.snapshotPayload(this.state))}\n\n`);
     response.write(
       `event: device\ndata: ${JSON.stringify({ connected: false, error: 'four-node RF stream mode' })}\n\n`,
     );
@@ -289,14 +298,26 @@ export class MultiNodeDashboardServer {
   }
 
   private broadcast(event: string, value: unknown): void {
-    const payload = JSON.stringify(event === 'nodes' ? this.withSlots(value) : value);
+    const payload = JSON.stringify(event === 'nodes' ? this.snapshotPayload(value) : value);
     for (const client of this.clients) client.write(`event: ${event}\ndata: ${payload}\n\n`);
   }
 
-  private withSlots(value: unknown): unknown {
+  private snapshotPayload(value: unknown): unknown {
     if (!this.options.slotDeviceIds || this.options.slotDeviceIds.length === 0) return value;
     if (typeof value !== 'object' || value === null) return value;
-    return { ...value, slotDeviceIds: this.options.slotDeviceIds };
+    const nodes = Array.isArray((value as { nodes?: unknown }).nodes)
+      ? ((value as { nodes: Array<{ deviceId?: unknown }> }).nodes ?? [])
+      : [];
+    const expected = new Set(this.options.slotDeviceIds.map((id) => id.toLowerCase()));
+    const unexpectedDeviceIds = nodes
+      .map((node) => String(node.deviceId ?? '').toLowerCase())
+      .filter((id) => id && !expected.has(id));
+    return {
+      ...value,
+      sequence: this.sequence,
+      slotDeviceIds: this.options.slotDeviceIds,
+      unexpectedDeviceIds,
+    };
   }
 
   private recordingStatus(): unknown {

@@ -20,6 +20,25 @@ export interface ActivityDiagnostics {
   activationScore: number;
   activeStreak: number;
   clearStreak: number;
+  parsedFrames?: number;
+  acceptedFrames?: number;
+  rollingWindowFrames?: number;
+  rejectedIncompatibleFrames?: number;
+  rejectedUncontrolledFrames?: number;
+  rejectedEmptyFrames?: number;
+  bufferResetCount?: number;
+  lastBufferResetReason?: string | null;
+  bootChangeCount?: number;
+  canonicalStreamKey?: string | null;
+  latestStreamKey?: string | null;
+  currentCsiShape?: {
+    linkId: number;
+    channel: number;
+    bandwidth: number;
+    phyMode: number;
+    csiLength: number;
+    subcarrierCount: number;
+  } | null;
 }
 
 export interface PositionEstimate {
@@ -51,6 +70,15 @@ export interface DashboardState {
   frames: number;
   datagrams: number;
   invalidDatagrams: number;
+  parsedFrames?: number;
+  acceptedFrames?: number;
+  rejectedIncompatibleFrames?: number;
+  rejectedUncontrolledFrames?: number;
+  rejectedEmptyFrames?: number;
+  bufferResetCount?: number;
+  lastBufferResetReason?: string | null;
+  canonicalStreamKey?: string | null;
+  latestStreamKey?: string | null;
   mode: 'heuristic' | 'portable-model' | 'fused';
   modelTarget?: 'presence' | 'label' | 'position';
   scores: Record<string, number>;

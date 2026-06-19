@@ -113,7 +113,7 @@ describe('four-node engine-to-web harness', () => {
     expect(node?.readinessReasons?.join(' ')).toMatch(/frame rate/u);
   });
 
-  it('resyncs a node when the CSI width changes', () => {
+  it('rejects incompatible CSI widths without clearing the valid window', () => {
     const engine = new MultiNodeEngine({
       requiredNodeCount: 1,
       staleAfterMs: 3000,
@@ -127,10 +127,11 @@ describe('four-node engine-to-web harness', () => {
     engine.accept(datagram(101, 1001, 65, 65, 3_250_000, 24, 12), now + 50);
 
     const [node] = engine.snapshot(now + 100).nodes;
-    expect(node?.ageSec).toBeLessThan(1);
-    expect(node?.subcarrierCount).toBe(6);
-    expect(node?.frames).toBe(2);
-    expect(node?.ready).toBe(true);
+    expect(node?.subcarrierCount).toBe(4);
+    expect(node?.frames).toBe(64);
+    expect(node?.acceptedFrames).toBe(64);
+    expect(node?.rejectedIncompatibleFrames).toBe(2);
+    expect(node?.bufferResetCount).toBe(0);
   });
 });
 
@@ -154,18 +155,31 @@ function datagram(
   }
   return {
     header: {
+      protocolVersion: 1,
       flags: 0,
+      captureMode: 0,
       deviceId,
       bootId,
       packetSeq: packetSequence,
+      batchSeq: packetSequence,
       frameCount: 1,
+      payloadLen: 28 + csi.length,
     },
     frames: [
       {
         frameSeq: frameSequence,
         timestampUs,
+        pingSeq: frameSequence,
         rssi: -45,
+        noiseFloor: -95,
+        channel: 6,
+        secondaryChannel: 0,
+        bandwidth: 0,
+        phyMode: 2,
+        rate: 11,
         firstWordInvalid: 0,
+        linkId: 1,
+        csiLen: csi.length,
         csi,
       },
     ],

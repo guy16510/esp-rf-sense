@@ -38,21 +38,28 @@ describe('four-node dashboard UI', () => {
     const scriptResponse = await fetch(`http://127.0.0.1:${port}/four-node-dashboard.js`);
     const script = await scriptResponse.text();
     expect(scriptResponse.status).toBe(200);
+    expect(script).toContain("import './dashboard-stream.js'");
     expect(script).toContain("import './four-node-dashboard-core.js'");
     expect(script).toContain("import './room-d3.js'");
+
+    const streamResponse = await fetch(`http://127.0.0.1:${port}/dashboard-stream.js`);
+    const stream = await streamResponse.text();
+    expect(streamResponse.status).toBe(200);
+    expect(stream.match(/new EventSource\('\/events'\)/gu)).toHaveLength(1);
+    expect(stream).toContain("source.addEventListener('snapshot'");
 
     const coreResponse = await fetch(`http://127.0.0.1:${port}/four-node-dashboard-core.js`);
     const core = await coreResponse.text();
     expect(coreResponse.status).toBe(200);
     expect(core).toContain('/api/nodes');
-    expect(core).toContain("new EventSource('/events')");
     expect(core).toContain('allocateSlots');
+    expect(core).toContain('ensureNodeCards');
 
     const roomResponse = await fetch(`http://127.0.0.1:${port}/room-d3.js`);
     const room = await roomResponse.text();
     expect(roomResponse.status).toBe(200);
     expect(room).toContain('d3.select');
-    expect(room).toContain("new EventSource('/events')");
+    expect(room).toContain("dashboardStream?.on('snapshot'");
     expect(room).toContain('estimateRegion');
     expect(room).toContain('not verified people counts');
 

@@ -33,8 +33,8 @@ export class RealtimeEngine {
     this.input.recordInvalid();
   }
 
-  resetBaseline(): void {
-    this.input = new InputBuffer(this.windowFrames * 8);
+  resetBaseline(reason = 'explicit-baseline-reset'): void {
+    this.input.resetWindow(reason);
     this.classifier.reset();
     this.latestKey = null;
     this.latestResult = this.classifier.evaluate([]);
@@ -55,6 +55,10 @@ export class RealtimeEngine {
     }
     const metrics = this.input.metrics();
     const ageSec = latest ? Math.max(0, (nowMs - latest.receivedAtMs) / 1000) : null;
+    const averageRssi =
+      frames.length > 0
+        ? frames.reduce((sum, frame) => sum + frame.rssi, 0) / frames.length
+        : null;
     const position = this.latestResult.position;
     const bubbles =
       position?.accepted && position.x !== null && position.y !== null
@@ -83,6 +87,30 @@ export class RealtimeEngine {
       frames: frames.length,
       datagrams: metrics.datagrams,
       invalidDatagrams: metrics.invalidDatagrams,
+      parsedFrames: metrics.parsedFrames,
+      acceptedFrames: metrics.acceptedFrames,
+      rejectedIncompatibleFrames: metrics.rejectedIncompatibleFrames,
+      rejectedUncontrolledFrames: metrics.rejectedUncontrolledFrames,
+      rejectedEmptyFrames: metrics.rejectedEmptyFrames,
+      bufferResetCount: metrics.bufferResetCount,
+      lastBufferResetReason: metrics.lastBufferResetReason,
+      canonicalStreamKey: metrics.canonicalStreamKey,
+      latestStreamKey: metrics.latestStreamKey,
+      averageRssi,
+      diagnostics: {
+        ...this.latestResult.diagnostics,
+        parsedFrames: metrics.parsedFrames,
+        acceptedFrames: metrics.acceptedFrames,
+        rollingWindowFrames: metrics.rollingWindowFrames,
+        rejectedIncompatibleFrames: metrics.rejectedIncompatibleFrames,
+        rejectedUncontrolledFrames: metrics.rejectedUncontrolledFrames,
+        rejectedEmptyFrames: metrics.rejectedEmptyFrames,
+        bufferResetCount: metrics.bufferResetCount,
+        lastBufferResetReason: metrics.lastBufferResetReason,
+        canonicalStreamKey: metrics.canonicalStreamKey,
+        latestStreamKey: metrics.latestStreamKey,
+        currentCsiShape: metrics.currentCsiShape,
+      },
     };
   }
 }

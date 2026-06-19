@@ -10,6 +10,7 @@ const positions = {
 let d3;
 let latest = null;
 let smoothedRegion = null;
+const dashboardStream = window.RfSenseDashboardStream;
 const slotAssignments = new Map();
 const history = [];
 
@@ -121,8 +122,7 @@ function buildControlCenter() {
 
 function connect() {
   fetch('/api/nodes').then((response) => response.json()).then(render).catch(() => undefined);
-  const stream = new EventSource('/events');
-  stream.addEventListener('nodes', (event) => render(JSON.parse(event.data)));
+  dashboardStream?.on('snapshot', render);
 }
 
 function render(snapshot) {
@@ -159,15 +159,6 @@ function assignSlots(nodes, slotDeviceIds = []) {
       const index = explicitIds.indexOf(id);
       if (index >= 0 && slots[index]) {
         assigned.set(slots[index], node);
-        matched.add(id);
-      }
-    }
-    for (const node of nodes) {
-      const id = String(node.deviceId || '').toLowerCase();
-      if (matched.has(id)) continue;
-      const free = slots.find((slot) => !assigned.get(slot));
-      if (free) {
-        assigned.set(free, node);
         matched.add(id);
       }
     }

@@ -1,5 +1,6 @@
 const get = (id) => document.getElementById(id);
 const template = get('nodeCardTemplate');
+const dashboardStream = window.RfSenseDashboardStream;
 const slotAssignments = new Map();
 const history = [];
 
@@ -77,15 +78,6 @@ function allocateSlots(nodes, requiredCount, slotDeviceIds = []) {
         assigned.add(id);
       }
     }
-    for (const node of nodes) {
-      const id = String(node.deviceId || '').toLowerCase();
-      if (assigned.has(id)) continue;
-      const free = slots.findIndex((candidate) => !candidate);
-      if (free >= 0) {
-        slots[free] = node;
-        assigned.add(id);
-      }
-    }
     return slots;
   }
 
@@ -134,7 +126,10 @@ function renderSnapshot(snapshot) {
   get('contributors').textContent = `${(fused.contributingNodes || []).length} contributors`;
   get('subcarrierCount').textContent = `${(fused.amplitudeProfile || []).length} subcarriers`;
 
-  renderNodeGrid(allocateSlots(nodes, required, snapshot?.slotDeviceIds || []), snapshot?.slotDeviceIds || []);
+  renderNodeGrid(
+    allocateSlots(nodes, required, snapshot?.slotDeviceIds || []),
+    snapshot?.slotDeviceIds || [],
+  );
   drawProfile(get('fusedProfile'), fused.amplitudeProfile || [], true);
   renderReadiness(snapshot);
   updateRecordingControls();
@@ -142,31 +137,30 @@ function renderSnapshot(snapshot) {
 
 function renderNodeGrid(slots, slotDeviceIds = []) {
   const root = get('nodeGrid');
-  root.replaceChildren();
+  ensureNodeCards(root, 4);
   slots.slice(0, 4).forEach((node, index) => {
     const expectedDeviceId = slotDeviceIds[index];
-    const fragment = template.content.cloneNode(true);
-    const card = fragment.querySelector('.node-card');
+    const card = root.children[index];
     const status = classifyNode(node);
     card.className = `node-card ${status.level}`;
-    fragment.querySelector('.node-slot').textContent =
-      `Receiver ${String.fromCharCode(65 + index)}`;
-    fragment.querySelector('.node-name').textContent = `Node ${index + 1}`;
-    fragment.querySelector('.node-badge').className = `node-badge badge ${status.level}`;
-    fragment.querySelector('.node-badge').textContent = status.label;
+    card.querySelector('.node-slot').textContent = `Receiver ${String.fromCharCode(65 + index)}`;
+    card.querySelector('.node-name').textContent = `Node ${index + 1}`;
+    card.querySelector('.node-badge').className = `node-badge badge ${status.level}`;
+    card.querySelector('.node-badge').textContent = status.label;
 
     if (!node) {
-      fragment.querySelector('.node-id').textContent = expectedDeviceId
+      card.querySelector('.node-id').textContent = expectedDeviceId
         ? `Expected device ${expectedDeviceId}`
         : 'No device discovered';
-      fragment.querySelector('.node-state').textContent = 'Missing';
-      fragment.querySelector('.node-age').textContent = 'Waiting for UDP datagrams';
-      fragment.querySelector('.node-rate').textContent = '0.0 Hz';
-      fragment.querySelector('.node-baseline-value').textContent = '0%';
-      fragment.querySelector('.node-confidence').textContent = '0%';
-      fragment.querySelector('.node-motion').textContent = '0.0000';
-      fragment.querySelector('.node-activation').textContent = '0%';
-      fragment.querySelector('.node-loss').textContent = '0 ppm';
+      card.querySelector('.node-state').textContent = 'Missing';
+      card.querySelector('.node-age').textContent = 'Waiting for UDP datagrams';
+      card.querySelector('.node-rate').textContent = '0.0 Hz';
+      card.querySelector('.node-baseline-value').textContent = '0%';
+      card.querySelector('.node-baseline-bar').style.width = '0%';
+      card.querySelector('.node-confidence').textContent = '0%';
+      card.querySelector('.node-motion').textContent = '0.0000';
+      card.querySelector('.node-activation').textContent = '0%';
+      card.querySelector('.node-loss').textContent = '0 ppm';
       for (const selector of [
         '.node-datagrams',
         '.node-frames',
@@ -175,72 +169,85 @@ function renderNodeGrid(slots, slotDeviceIds = []) {
         '.node-duplicate',
         '.node-out-of-order',
       ]) {
-        fragment.querySelector(selector).textContent = '0';
+        card.querySelector(selector).textContent = '0';
       }
-      fragment.querySelector('.node-reasons').textContent =
+      card.querySelector('.node-reasons').textContent =
         expectedDeviceId
           ? 'This hard-coded slot has not received its expected node stream.'
           : 'This slot has not received a node stream.';
-      fragment.querySelector('.node-boot').textContent = 'Boot ID —';
-      fragment.querySelector('.node-reset-button').disabled = true;
-      drawProfile(fragment.querySelector('.node-profile'), [], false);
-      root.append(fragment);
+      card.querySelector('.node-boot').textContent = 'Boot ID —';
+      card.querySelector('.node-reset-button').disabled = true;
+      card.querySelector('.node-reset-button').onclick = null;
+      drawProfile(card.querySelector('.node-profile'), [], false);
       return;
     }
 
     const diagnostics = node.diagnostics || {};
-    fragment.querySelector('.node-id').textContent = `Device ${node.deviceId}`;
-    fragment.querySelector('.node-state').textContent =
+    card.querySelector('.node-id').textContent = `Device ${node.deviceId}`;
+    card.querySelector('.node-state').textContent =
       node.mode === 'portable-model' ? predictedLabel(node) || labelState(node.state) : labelState(node.state);
-    fragment.querySelector('.node-age').textContent = finite(node.ageSec)
+    card.querySelector('.node-age').textContent = finite(node.ageSec)
       ? `Updated ${number(node.ageSec).toFixed(2)}s ago`
       : 'No recent frame';
-    fragment.querySelector('.node-rate').textContent = `${number(node.frameRateHz).toFixed(1)} Hz`;
-    fragment.querySelector('.node-baseline-value').textContent = percent(
+    card.querySelector('.node-rate').textContent = `${number(node.frameRateHz).toFixed(1)} Hz`;
+    card.querySelector('.node-baseline-value').textContent = percent(
       diagnostics.baselineProgress,
     );
-    fragment.querySelector('.node-baseline-bar').style.width = percent(
+    card.querySelector('.node-baseline-bar').style.width = percent(
       diagnostics.baselineProgress,
     );
-    fragment.querySelector('.node-confidence').textContent = percent(node.confidence);
-    fragment.querySelector('.node-motion').textContent = number(node.motion).toFixed(4);
-    fragment.querySelector('.node-activation').textContent = percent(diagnostics.activationScore);
-    fragment.querySelector('.node-loss').textContent = `${integer(node.lossPpm)} ppm`;
-    fragment.querySelector('.node-datagrams').textContent = integer(node.datagrams);
-    fragment.querySelector('.node-frames').textContent = integer(node.frames);
-    fragment.querySelector('.node-invalid').textContent = integer(node.invalidDatagrams);
-    fragment.querySelector('.node-missing').textContent = integer(node.missingPackets);
-    fragment.querySelector('.node-duplicate').textContent = integer(node.duplicatePackets);
-    fragment.querySelector('.node-out-of-order').textContent = integer(node.outOfOrderPackets);
-    fragment.querySelector('.node-reasons').textContent = (node.readinessReasons || []).join('; ');
-    fragment.querySelector('.node-boot').textContent = `Boot ID ${node.bootId || '—'}`;
-    const resetButton = fragment.querySelector('.node-reset-button');
+    card.querySelector('.node-confidence').textContent = percent(node.confidence);
+    card.querySelector('.node-motion').textContent = number(node.motion).toFixed(4);
+    card.querySelector('.node-activation').textContent = percent(diagnostics.activationScore);
+    card.querySelector('.node-loss').textContent = `${integer(node.lossPpm)} ppm`;
+    card.querySelector('.node-datagrams').textContent = integer(node.datagrams);
+    card.querySelector('.node-frames').textContent = integer(node.frames);
+    card.querySelector('.node-invalid').textContent = integer(node.invalidDatagrams);
+    card.querySelector('.node-missing').textContent = integer(node.missingPackets);
+    card.querySelector('.node-duplicate').textContent = integer(node.duplicatePackets);
+    card.querySelector('.node-out-of-order').textContent = integer(node.outOfOrderPackets);
+    card.querySelector('.node-reasons').textContent = (node.readinessReasons || []).join('; ');
+    card.querySelector('.node-boot').textContent =
+      `Boot ID ${node.bootId || '—'} · ${node.canonicalStreamKey || 'no stream'}`;
+    const resetButton = card.querySelector('.node-reset-button');
     resetButton.dataset.deviceId = node.deviceId;
-    resetButton.addEventListener('click', () => void resetBaseline(node.deviceId, resetButton));
-    drawProfile(fragment.querySelector('.node-profile'), node.amplitudeProfile || [], false);
-    root.append(fragment);
+    resetButton.disabled = false;
+    resetButton.onclick = () => void resetBaseline(node.deviceId, resetButton);
+    drawProfile(card.querySelector('.node-profile'), node.amplitudeProfile || [], false);
   });
+}
+
+function ensureNodeCards(root, count) {
+  while (root.children.length < count) {
+    root.append(template.content.cloneNode(true));
+  }
+  while (root.children.length > count) {
+    root.lastElementChild?.remove();
+  }
 }
 
 function renderReadiness(snapshot) {
   const readiness = snapshot?.readiness || {};
   const nodes = Array.isArray(snapshot?.nodes) ? snapshot.nodes : [];
+  const unexpected = Array.isArray(snapshot?.unexpectedDeviceIds) ? snapshot.unexpectedDeviceIds : [];
   const ready = number(readiness.onlineNodeCount);
   const required = number(readiness.requiredNodeCount, 4);
   const badge = get('readinessBadge');
   const banner = get('diagnosticBanner');
+  const suffix =
+    unexpected.length > 0 ? ` Unexpected devices: ${unexpected.join(', ')}.` : '';
 
   if (readiness.readyForCapture) {
     badge.className = 'badge ready';
     badge.textContent = 'Ready';
     banner.className = 'diagnostic-banner good';
-    banner.textContent = `${ready} of ${required} nodes are healthy. Training capture is enabled.`;
+    banner.textContent = `${ready} of ${required} nodes are healthy. Training capture is enabled.${suffix}`;
   } else if (nodes.length > 0) {
     badge.className = 'badge issue';
     badge.textContent = 'Blocked';
     banner.className = 'diagnostic-banner warn';
     banner.textContent =
-      (readiness.reasons || []).join('; ') || `${ready} of ${required} nodes are ready.`;
+      `${(readiness.reasons || []).join('; ') || `${ready} of ${required} nodes are ready.`}${suffix}`;
   } else {
     badge.className = 'badge neutral';
     badge.textContent = 'Waiting';
@@ -403,21 +410,26 @@ async function resetBaseline(deviceId, button) {
 }
 
 function drawProfile(svg, values, large) {
-  svg.replaceChildren();
   const width = large ? 1000 : 400;
   const height = large ? 240 : 90;
   const pad = large ? 26 : 8;
-  drawGrid(svg, width, height, large ? 5 : 3);
+  ensureGrid(svg, width, height, large ? 5 : 3);
   const clean = values.map(Number).filter(Number.isFinite);
+  const empty = ensureSvg(svg, 'text', 'empty-chart-label');
+  const fill = ensureSvg(svg, 'path', 'chart-profile-fill');
+  const line = ensureSvg(svg, 'path', 'chart-profile-line');
   if (clean.length < 2) {
-    const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-    text.setAttribute('x', width / 2);
-    text.setAttribute('y', height / 2);
-    text.setAttribute('class', 'empty-chart-label');
-    text.textContent = 'Waiting for CSI profile';
-    svg.append(text);
+    empty.setAttribute('x', width / 2);
+    empty.setAttribute('y', height / 2);
+    empty.textContent = 'Waiting for CSI profile';
+    empty.removeAttribute('hidden');
+    fill.setAttribute('hidden', '');
+    line.setAttribute('hidden', '');
     return;
   }
+  empty.setAttribute('hidden', '');
+  fill.removeAttribute('hidden');
+  line.removeAttribute('hidden');
   const min = Math.min(...clean);
   const max = Math.max(...clean);
   const span = Math.max(1e-9, max - min);
@@ -430,26 +442,38 @@ function drawProfile(svg, values, large) {
     .map(([x, y], index) => `${index ? 'L' : 'M'}${x.toFixed(2)},${y.toFixed(2)}`)
     .join(' ');
   const fillD = `${lineD} L${points.at(-1)[0].toFixed(2)},${height - pad} L${points[0][0].toFixed(2)},${height - pad} Z`;
-  const fill = document.createElementNS('http://www.w3.org/2000/svg', 'path');
   fill.setAttribute('d', fillD);
-  fill.setAttribute('class', 'chart-profile-fill');
-  const line = document.createElementNS('http://www.w3.org/2000/svg', 'path');
   line.setAttribute('d', lineD);
-  line.setAttribute('class', 'chart-profile-line');
-  svg.append(fill, line);
 }
 
-function drawGrid(svg, width, height, rows) {
-  for (let index = 1; index < rows; index++) {
+function ensureGrid(svg, width, height, rows) {
+  const existing = [...svg.querySelectorAll('.chart-grid-line')];
+  while (existing.length < rows - 1) {
     const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    line.setAttribute('class', 'chart-grid-line');
+    svg.prepend(line);
+    existing.push(line);
+  }
+  for (const line of existing.slice(rows - 1)) line.remove();
+  for (let index = 1; index < rows; index++) {
+    const line = existing[index - 1];
     const y = (height / rows) * index;
     line.setAttribute('x1', 0);
     line.setAttribute('x2', width);
     line.setAttribute('y1', y);
     line.setAttribute('y2', y);
-    line.setAttribute('class', 'chart-grid-line');
-    svg.append(line);
   }
+}
+
+function ensureSvg(svg, tag, className) {
+  let node = svg.querySelector(`.${className}`);
+  if (!node) {
+    node = document.createElementNS('http://www.w3.org/2000/svg', tag);
+    node.setAttribute('class', className);
+    if (tag === 'text') node.setAttribute('text-anchor', 'middle');
+    svg.append(node);
+  }
+  return node;
 }
 
 function addHistory(state) {
@@ -465,17 +489,22 @@ function addHistory(state) {
 
 function drawHistory() {
   const svg = get('historyChart');
-  svg.replaceChildren();
-  drawGrid(svg, 1000, 240, 5);
+  ensureGrid(svg, 1000, 240, 5);
+  const empty = ensureSvg(svg, 'text', 'empty-chart-label');
+  const motion = ensureSvg(svg, 'path', 'chart-motion');
+  const confidence = ensureSvg(svg, 'path', 'chart-confidence');
   if (history.length < 2) {
-    const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-    text.setAttribute('x', 500);
-    text.setAttribute('y', 120);
-    text.setAttribute('class', 'empty-chart-label');
-    text.textContent = 'Waiting for rolling history';
-    svg.append(text);
+    empty.setAttribute('x', 500);
+    empty.setAttribute('y', 120);
+    empty.textContent = 'Waiting for rolling history';
+    empty.removeAttribute('hidden');
+    motion.setAttribute('hidden', '');
+    confidence.setAttribute('hidden', '');
     return;
   }
+  empty.setAttribute('hidden', '');
+  motion.removeAttribute('hidden');
+  confidence.removeAttribute('hidden');
   const pad = 26;
   const maxMotion = Math.max(0.001, ...history.map((point) => point.motion));
   const makePath = (selector, max) =>
@@ -486,19 +515,14 @@ function drawHistory() {
         return `${index ? 'L' : 'M'}${x.toFixed(2)},${y.toFixed(2)}`;
       })
       .join(' ');
-  const motion = document.createElementNS('http://www.w3.org/2000/svg', 'path');
   motion.setAttribute(
     'd',
     makePath((point) => point.motion, maxMotion),
   );
-  motion.setAttribute('class', 'chart-motion');
-  const confidence = document.createElementNS('http://www.w3.org/2000/svg', 'path');
   confidence.setAttribute(
     'd',
     makePath((point) => point.confidence, 1),
   );
-  confidence.setAttribute('class', 'chart-confidence');
-  svg.append(motion, confidence);
 }
 
 function updateStreamStatus() {
@@ -545,22 +569,20 @@ async function boot() {
     () => void resetBaseline(null, get('resetAllButton')),
   );
 
-  const stream = new EventSource('/events');
-  stream.onopen = () => {
+  dashboardStream?.on('open', () => {
     streamConnected = true;
     updateStreamStatus();
-  };
-  stream.addEventListener('state', (event) => {
-    const fused = JSON.parse(event.data);
-    addHistory(fused);
   });
-  stream.addEventListener('nodes', (event) => renderSnapshot(JSON.parse(event.data)));
-  stream.addEventListener('recording', (event) => renderRecording(JSON.parse(event.data)));
-  stream.addEventListener('model', (event) => renderModel(JSON.parse(event.data)));
-  stream.onerror = () => {
+  dashboardStream?.on('snapshot', (snapshot) => {
+    renderSnapshot(snapshot);
+    addHistory(snapshot.fused || {});
+  });
+  dashboardStream?.on('recording', (recording) => renderRecording(recording));
+  dashboardStream?.on('model', (model) => renderModel(model));
+  dashboardStream?.on('close', () => {
     streamConnected = false;
     updateStreamStatus();
-  };
+  });
   setInterval(updateStreamStatus, 1000);
 }
 

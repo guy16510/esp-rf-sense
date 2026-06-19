@@ -34,6 +34,7 @@ interface NodeRuntime {
   duplicatePackets: number;
   outOfOrderPackets: number;
   csiLength: number;
+  bootChangeCount: number;
 }
 
 export class MultiNodeEngine {
@@ -66,6 +67,7 @@ export class MultiNodeEngine {
         duplicatePackets: 0,
         outOfOrderPackets: 0,
         csiLength: 0,
+        bootChangeCount: 0,
       };
       this.runtimes.set(id, runtime);
     }
@@ -76,12 +78,14 @@ export class MultiNodeEngine {
       runtime.missingPackets = 0;
       runtime.duplicatePackets = 0;
       runtime.outOfOrderPackets = 0;
-      runtime.engine.resetBaseline();
+      runtime.bootChangeCount++;
+      runtime.engine.resetBaseline('esp32-reboot');
     }
 
     this.trackSequence(runtime, datagram.header.packetSeq >>> 0);
-    runtime.csiLength = datagram.frames.at(-1)?.csi.length ?? runtime.csiLength;
     runtime.engine.accept(datagram, receivedAtMs);
+    const shape = runtime.engine.snapshot(receivedAtMs).diagnostics.currentCsiShape;
+    runtime.csiLength = shape?.csiLength ?? runtime.csiLength;
   }
 
   recordInvalid(): void {
@@ -92,10 +96,11 @@ export class MultiNodeEngine {
     if (deviceId) {
       const runtime = this.runtimes.get(Number.parseInt(deviceId, 16) >>> 0);
       if (!runtime) throw new Error(`unknown node ${deviceId}`);
-      runtime.engine.resetBaseline();
+      runtime.engine.resetBaseline('explicit-baseline-reset');
       return;
     }
-    for (const runtime of this.runtimes.values()) runtime.engine.resetBaseline();
+    for (const runtime of this.runtimes.values())
+      runtime.engine.resetBaseline('explicit-baseline-reset');
   }
 
   setModel(model?: PortablePrototypeModel): void {
@@ -136,6 +141,7 @@ export class MultiNodeEngine {
 
   private nodeSnapshot(runtime: NodeRuntime, nowMs: number): DashboardState {
     const base = runtime.engine.snapshot(nowMs);
+    const currentShape = base.diagnostics.currentCsiShape;
     const totalPackets = base.datagrams + runtime.missingPackets;
     const lossPpm =
       totalPackets > 0 ? Math.round((runtime.missingPackets / totalPackets) * 1_000_000) : 0;
@@ -152,18 +158,26 @@ export class MultiNodeEngine {
       );
     if (lossPpm > (this.options.maxLossPpm ?? 100_000))
       reasons.push(`packet loss ${lossPpm} ppm exceeds maximum`);
-    if (runtime.csiLength <= 0) reasons.push('CSI payload is empty');
+    if (runtime.csiLength <= 0) reasons.push('no canonical CSI stream selected');
+    if (base.frames === 0 && (base.acceptedFrames ?? 0) > 0)
+      reasons.push(`model-buffer reset: ${base.lastBufferResetReason ?? 'unknown reason'}`);
+    if (base.frames === 0 && (base.parsedFrames ?? 0) > 0 && (base.acceptedFrames ?? 0) === 0)
+      reasons.push('all parsed frames were rejected before the model buffer');
 
     return {
       ...base,
       deviceId: hex(runtime.deviceId),
       bootId: hex(runtime.bootId),
       lossPpm,
-      csiLength: runtime.csiLength,
-      subcarrierCount: Math.floor(runtime.csiLength / 2),
+      csiLength: currentShape?.csiLength ?? runtime.csiLength,
+      subcarrierCount: currentShape?.subcarrierCount ?? Math.floor(runtime.csiLength / 2),
       missingPackets: runtime.missingPackets,
       duplicatePackets: runtime.duplicatePackets,
       outOfOrderPackets: runtime.outOfOrderPackets,
+      diagnostics: {
+        ...base.diagnostics,
+        bootChangeCount: runtime.bootChangeCount,
+      },
       ready: reasons.length === 0,
       readinessReasons: reasons,
       source: 'real',

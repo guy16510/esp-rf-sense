@@ -1,3 +1,4 @@
+import './dashboard-stream.js';
 import './four-node-dashboard-core.js';
 import './room-d3.js';
 
@@ -7,6 +8,7 @@ const positionState = {
   recording: null,
   model: null,
 };
+const dashboardStream = window.RfSenseDashboardStream;
 
 injectPositionStyles();
 installPositionControls();
@@ -105,14 +107,13 @@ async function loadInitialPositionState() {
 }
 
 function connectPositionStream() {
-  const stream = new EventSource('/events');
-  stream.addEventListener('nodes', (event) => renderPositionSnapshot(JSON.parse(event.data)));
-  stream.addEventListener('recording', (event) => {
-    positionState.recording = JSON.parse(event.data);
+  dashboardStream?.on('snapshot', renderPositionSnapshot);
+  dashboardStream?.on('recording', (recording) => {
+    positionState.recording = recording;
     updatePositionControls();
   });
-  stream.addEventListener('model', (event) => {
-    positionState.model = JSON.parse(event.data);
+  dashboardStream?.on('model', (model) => {
+    positionState.model = model;
     renderPositionSnapshot(positionState.snapshot);
   });
 }

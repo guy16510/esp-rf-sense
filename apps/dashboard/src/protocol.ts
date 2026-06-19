@@ -1,22 +1,43 @@
-const MAGIC = Uint8Array.from([0x52, 0x46, 0x43, 0x53]);
-const PROTOCOL_VERSION = 1;
-const DATAGRAM_HEADER_SIZE = 32;
-const FRAME_FIXED_SIZE = 28;
-const CRC_SIZE = 4;
+export const MAGIC = Uint8Array.from([0x52, 0x46, 0x43, 0x53]);
+export const PROTOCOL_VERSION = 1;
+export const DATAGRAM_HEADER_SIZE = 32;
+export const FRAME_FIXED_SIZE = 28;
+export const CRC_SIZE = 4;
+export const PING_SEQ_NONE = 0xffffffff;
+export const FLAG_MAINTENANCE = 0x01;
+
+export enum CaptureMode {
+  Controlled = 0,
+  Normal = 1,
+  Passive = 2,
+}
 
 export interface DatagramHeader {
+  protocolVersion: number;
   flags: number;
+  captureMode: number;
   deviceId: number;
   bootId: number;
   packetSeq: number;
+  batchSeq: number;
   frameCount: number;
+  payloadLen: number;
 }
 
 export interface CsiFrame {
   frameSeq: number;
   timestampUs: number;
+  pingSeq: number;
   rssi: number;
+  noiseFloor: number;
+  channel: number;
+  secondaryChannel: number;
+  bandwidth: number;
+  phyMode: number;
+  rate: number;
   firstWordInvalid: number;
+  linkId: number;
+  csiLen: number;
   csi: Buffer;
 }
 
@@ -59,25 +80,30 @@ export function parseDatagram(buffer: Buffer): ParseResult {
   ) {
     return { ok: false, error: 'bad magic' };
   }
-  if (buffer[4] !== PROTOCOL_VERSION) {
-    return { ok: false, error: `unsupported protocol version ${buffer[4]}` };
+  const protocolVersion = buffer[4]!;
+  if (protocolVersion !== PROTOCOL_VERSION) {
+    return { ok: false, error: `unsupported protocol version ${protocolVersion}` };
   }
 
   const payloadLength = buffer.readUInt16LE(26);
   const bodyLength = buffer.length - CRC_SIZE;
   if (DATAGRAM_HEADER_SIZE + payloadLength + CRC_SIZE !== buffer.length) {
-    return { ok: false, error: 'payload length mismatch' };
+    return { ok: false, error: 'payloadLen mismatch' };
   }
   if (crc32(buffer, bodyLength) !== buffer.readUInt32LE(bodyLength)) {
     return { ok: false, error: 'crc mismatch' };
   }
 
   const header: DatagramHeader = {
+    protocolVersion,
     flags: buffer[5]!,
+    captureMode: buffer[6]!,
     deviceId: buffer.readUInt32LE(8),
     bootId: buffer.readUInt32LE(12),
     packetSeq: buffer.readUInt32LE(16),
+    batchSeq: buffer.readUInt32LE(20),
     frameCount: buffer.readUInt16LE(24),
+    payloadLen: payloadLength,
   };
   const frames: CsiFrame[] = [];
   let offset = DATAGRAM_HEADER_SIZE;
@@ -93,8 +119,17 @@ export function parseDatagram(buffer: Buffer): ParseResult {
     frames.push({
       frameSeq: buffer.readUInt32LE(offset),
       timestampUs: Number(buffer.readBigUInt64LE(offset + 4)),
+      pingSeq: buffer.readUInt32LE(offset + 12),
       rssi: buffer.readInt8(offset + 16),
+      noiseFloor: buffer.readInt8(offset + 17),
+      channel: buffer[offset + 18]!,
+      secondaryChannel: buffer[offset + 19]!,
+      bandwidth: buffer[offset + 20]!,
+      phyMode: buffer[offset + 21]!,
+      rate: buffer[offset + 22]!,
       firstWordInvalid: buffer[offset + 23]!,
+      linkId: buffer.readUInt16LE(offset + 24),
+      csiLen: csiLength,
       csi: Buffer.from(buffer.subarray(csiStart, csiStart + csiLength)),
     });
     offset = csiStart + csiLength;

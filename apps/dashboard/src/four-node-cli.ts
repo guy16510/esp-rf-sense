@@ -31,9 +31,13 @@ const minFrameRateHz = Math.max(0, numberFlag('min-frame-rate', 5));
 const recordingsDir = values.get('recordings-dir') ?? 'recordings/dashboard';
 const modelPath = values.get('model') ?? values.get('model-path') ?? 'models/dashboard-labels.json';
 const model = values.has('model') ? await loadPortableModel(modelPath) : undefined;
-const defaultSlotDeviceIds = ['2f4b47f0', 'f6ff4274', 'f6ff95c0', 'f6ff98bc'];
+const defaultSlotDeviceIds = ['2f4b47f0', '2f4b5390', '2f4b735c', '2f77883c'];
 const slotDeviceIds = ['a', 'b', 'c', 'd'].map((slot, index) =>
-  (values.get(`slot-${slot}`) ?? defaultSlotDeviceIds[index]!).toLowerCase(),
+  (
+    values.get(`slot-${slot}`) ??
+    process.env[`RF_SENSE_SLOT_${slot.toUpperCase()}`] ??
+    defaultSlotDeviceIds[index]!
+  ).toLowerCase(),
 );
 const engine = new MultiNodeEngine({
   requiredNodeCount,
