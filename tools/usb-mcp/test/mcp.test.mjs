@@ -4,12 +4,48 @@ import test from "node:test";
 import { createMcpHandler } from "../src/mcp.mjs";
 import { SerialManager } from "../src/serial.mjs";
 
-test("MCP discovery exposes only read-only serial tools", async () => {
+test("MCP discovery exposes annotated read-only serial tools with output schemas", async () => {
   const handler = createMcpHandler(new SerialManager({ listDevicesFn: async () => [] }));
   const response = await handler({ jsonrpc: "2.0", id: 1, method: "tools/list" });
   const names = response.result.tools.map((tool) => tool.name);
   assert.deepEqual(names, ["serial_list_devices", "serial_open", "serial_read"]);
   assert.equal(names.some((name) => /write|flash|shell|exec|command/i.test(name)), false);
+  for (const tool of response.result.tools) {
+    assert.equal(tool.annotations.readOnlyHint, true);
+    assert.equal(tool.annotations.destructiveHint, false);
+    assert.equal(tool.outputSchema.type, "object");
+  }
+});
+
+test("initialize negotiates protocol and initialized notification has no response", async () => {
+  const handler = createMcpHandler(new SerialManager({ listDevicesFn: async () => [] }));
+  const initialized = await handler({
+    jsonrpc: "2.0",
+    id: 1,
+    method: "initialize",
+    params: { protocolVersion: "2025-06-18" },
+  });
+  assert.equal(initialized.result.protocolVersion, "2025-06-18");
+  assert.equal(initialized.result.serverInfo.version, "0.2.0");
+
+  const notification = await handler({ jsonrpc: "2.0", method: "notifications/initialized" });
+  assert.equal(notification, null);
+});
+
+test("tool calls return both text and structured content", async () => {
+  const handler = createMcpHandler(new SerialManager({
+    listDevicesFn: async () => [{ path: "/dev/cu.usbmodem1101", allowed: true }],
+  }));
+  const response = await handler({
+    jsonrpc: "2.0",
+    id: 2,
+    method: "tools/call",
+    params: { name: "serial_list_devices", arguments: {} },
+  });
+  assert.deepEqual(response.result.structuredContent, {
+    devices: [{ path: "/dev/cu.usbmodem1101", allowed: true }],
+  });
+  assert.equal(response.result.isError, false);
 });
 
 test("serial manager reports open failures without exposing write paths", async () => {
