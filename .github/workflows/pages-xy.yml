@@ -1,0 +1,46 @@
+name: pages-xy-dashboard
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm install --no-save @playwright/test@1.61.0 http-server@14.1.1
+      - run: npx playwright install chromium
+      - run: |
+          npx http-server apps/dashboard/pages -p 4173 -c-1 > /tmp/pages-xy.log 2>&1 &
+          for attempt in $(seq 1 30); do curl --fail --silent http://127.0.0.1:4173 >/dev/null && exit 0; sleep .25; done
+          cat /tmp/pages-xy.log
+          exit 1
+      - env:
+          RF_PAGES_URL: http://127.0.0.1:4173
+        run: npx playwright test apps/dashboard/e2e/pages-xy.spec.mjs
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: test
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: apps/dashboard/pages
+      - id: deployment
+        uses: actions/deploy-pages@v4
