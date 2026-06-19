@@ -8,6 +8,13 @@ import {
   zonesComplete,
 } from './room-setup-state.js';
 
+const receivers = [
+  { deviceId: '1' },
+  { deviceId: '2' },
+  { deviceId: '3' },
+  { deviceId: '4' },
+];
+
 describe('guided room setup state', () => {
   it('gates capture until the room definition and four receivers are ready', () => {
     const state = createDefaultRoomSetup();
@@ -62,12 +69,7 @@ describe('guided room setup state', () => {
 
   it('converts normalized zones into validated room geometry for training', () => {
     const state = createDefaultRoomSetup();
-    const geometry = buildRoomSetupGeometry(state, [
-      { deviceId: '1' },
-      { deviceId: '2' },
-      { deviceId: '3' },
-      { deviceId: '4' },
-    ]);
+    const geometry = buildRoomSetupGeometry(state, receivers);
 
     expect(geometry.room).toEqual({ name: 'Tap room', widthMeters: 6, heightMeters: 5 });
     expect(geometry.receivers.map((receiver) => receiver.slot)).toEqual(['A', 'B', 'C', 'D']);
@@ -79,5 +81,29 @@ describe('guided room setup state', () => {
     ]);
     expect(geometry.zones.center).toEqual({ x: 3, y: 2.5 });
     expect(geometry.transmitter).toEqual({ name: 'room-router', x: 3, y: 0 });
+  });
+
+  it('uses updated room dimensions when building geometry for retraining', () => {
+    const state = createDefaultRoomSetup();
+    state.roomName = 'Changed room';
+    state.widthMeters = 8;
+    state.heightMeters = 4;
+
+    const geometry = buildRoomSetupGeometry(state, receivers);
+
+    expect(geometry.room).toEqual({
+      name: 'Changed room',
+      widthMeters: 8,
+      heightMeters: 4,
+    });
+    expect(geometry.receivers).toMatchObject([
+      { slot: 'A', x: 0, y: 0 },
+      { slot: 'B', x: 8, y: 0 },
+      { slot: 'C', x: 0, y: 4 },
+      { slot: 'D', x: 8, y: 4 },
+    ]);
+    expect(geometry.zones.center).toEqual({ x: 4, y: 2 });
+    expect(geometry.zones.door).toEqual({ x: 4, y: 0.48 });
+    expect(geometry.transmitter).toEqual({ name: 'room-router', x: 4, y: 0 });
   });
 });
