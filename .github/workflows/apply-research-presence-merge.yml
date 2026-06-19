@@ -17,25 +17,55 @@ jobs:
           ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 1
           show-progress: false
-      - name: Verify transport integrity
+
+      - name: Reconstruct and verify validated patch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
         shell: bash
         run: |
           set -euo pipefail
-          cat .github/research-presence-payload/part-* > /tmp/research-presence.patch.xz.b64
-          echo "Payload bytes: $(wc -c < /tmp/research-presence.patch.xz.b64)"
+          : > /tmp/research-presence.patch.xz.b64
+          blobs=(
+            438410572914f314d8966a807c18c4d945549269
+            d86047944144cfee7546e8e56f5ed30c7fc28c93
+            5d0c616f4f679ff9e697e9368e05ce89156295c0
+            99e4c254994263f194b8e4d11f7b1875b3792943
+            029e73ea2a309d89b7c0e33033b7f6e39b9a2cb5
+            d1182a605bf81775bc14fdf0be4195901e0aeda9
+            2f34777a4e81e42055cf31c4a322a3b4808b87ed
+            e40baabdaf7637aedb1a5010dbaca1036c233a85
+            56d9b85c5c9f62b67bcfff2f52d85ed8dd908aab
+            85ea386b537941242219b0618811b5c58025b94a
+            7a1adb04afa2fbd5d82d54952e329ae42b9b56cf
+            87bf54968313ad73767146173ff8891ad8337991
+            2ee3cba404199d05174427645b8709ee6e5b251d
+            cd88440b646d268c53bbbedfbd8c4dd635892a40
+            eaa750c24eaf10ac86b95de57a5c76585c82920c
+            01caf5e293af5e6242c0fc8766decadba53ad7a8
+            d4ffd26765f4e4ffa4fb107649aee23f24d6d420
+          )
+          for blob in "${blobs[@]}"; do
+            gh api "repos/${REPOSITORY}/git/blobs/${blob}" --jq .content \
+              | tr -d '\n' \
+              | base64 --decode \
+              >> /tmp/research-presence.patch.xz.b64
+          done
+
           test "$(wc -c < /tmp/research-presence.patch.xz.b64)" -eq 169160
           echo "b84230324220a59881fa112f3f8636a5d3a80160eae5a99bb3ec81eed9b8d0b2  /tmp/research-presence.patch.xz.b64" | sha256sum -c -
+
           base64 --decode /tmp/research-presence.patch.xz.b64 > /tmp/research-presence.patch.xz
-          echo "Compressed bytes: $(wc -c < /tmp/research-presence.patch.xz)"
           test "$(wc -c < /tmp/research-presence.patch.xz)" -eq 126868
           echo "53b34e0402b61a42440e6bed1e5b5c43fe42d0f1b4daeb721a657e6fe4f8d025  /tmp/research-presence.patch.xz" | sha256sum -c -
           xz --test /tmp/research-presence.patch.xz
+
           xz --decompress --stdout /tmp/research-presence.patch.xz > /tmp/research-presence.patch
-          echo "Patch bytes: $(wc -c < /tmp/research-presence.patch)"
           test "$(wc -c < /tmp/research-presence.patch)" -eq 514595
           echo "92385abc1ce23010fc74ad77ab7f3f0151571d21e79420af4be64d7ae15ce6da  /tmp/research-presence.patch" | sha256sum -c -
           git apply --check /tmp/research-presence.patch
-      - name: Apply validated implementation
+
+      - name: Apply implementation and remove bootstrap files
         shell: bash
         run: |
           set -euo pipefail
