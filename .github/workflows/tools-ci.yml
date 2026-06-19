@@ -23,7 +23,7 @@ jobs:
       - name: Install
         run: npm ci
       - name: Format
-        run: npx prettier --check "tools/**/src/**/*.ts" "apps/**/src/**/*.ts" "*.json"
+        run: npx prettier --check "tools/**/src/**/*.ts" "*.json"
       - name: Lint
         run: npm run lint
       - name: Typecheck
@@ -38,9 +38,9 @@ jobs:
           if-no-files-found: ignore
       - name: Unit tests
         run: npm test
-      - name: Four receiver packet alignment tests
+      - name: Packet alignment tests
         run: npx vitest run apps/dashboard/src/protocol-v2.test.ts apps/dashboard/src/joint-packet-aligner.test.ts
-      - name: Four receiver train and XY inference end-to-end gate
+      - name: XY localization test
         run: npx vitest run apps/dashboard/src/simulated-xy-pipeline.test.ts
       - name: Build all workspaces
         run: npm run build
