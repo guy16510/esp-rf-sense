@@ -24,12 +24,30 @@ export interface RecordingStatus {
   error: string | null;
 }
 
-interface RecordingMeta {
+interface PositionMetadata {
+  label: string;
+  x: number | null;
+  y: number | null;
+}
+
+interface SupplementalMetadata {
+  target?: 'label' | 'position';
+  subjectId?: string;
+  day?: string;
+  movement?: string;
+  position?: PositionMetadata;
+}
+
+interface RecordingMeta extends SupplementalMetadata {
   name: string;
   label: string;
   startedAt: string;
   finishedAt?: string;
   complete: boolean;
+  subject?: {
+    id?: string;
+    position?: PositionMetadata;
+  };
   stats: {
     datagrams: number;
     frames: number;
@@ -39,9 +57,17 @@ interface RecordingMeta {
   };
 }
 
+interface DecodedRecordingRequest {
+  label: string;
+  metadata: SupplementalMetadata;
+}
+
+const METADATA_PREFIX = 'rfsense-meta:';
+
 export class DashboardRecorder {
   private bin: WriteStream | null = null;
   private jsonl: WriteStream | null = null;
+  private supplementalMetadata: SupplementalMetadata = {};
   private statusValue: RecordingStatus = {
     active: false,
     label: null,
@@ -86,7 +112,9 @@ export class DashboardRecorder {
 
   async start(label: string, targetSeconds = 90, targetFrames = 2000): Promise<RecordingStatus> {
     if (this.statusValue.active) throw new Error('recording already active');
-    const cleanLabel = sanitizeLabel(label);
+    const request = decodeRecordingRequest(label);
+    const cleanLabel = sanitizeLabel(request.label);
+    this.supplementalMetadata = request.metadata;
     const safeTargetSeconds = boundedInt(targetSeconds, 5, 3600);
     const safeTargetFrames = boundedInt(targetFrames, 1, 1_000_000);
     const stamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -163,12 +191,23 @@ export class DashboardRecorder {
 
   private async flushMeta(complete: boolean): Promise<void> {
     if (!this.statusValue.metaPath || !this.statusValue.name || !this.statusValue.label) return;
+    const position = this.supplementalMetadata.position;
+    const subjectId = this.supplementalMetadata.subjectId;
     const meta: RecordingMeta = {
       name: this.statusValue.name,
       label: this.statusValue.label,
       startedAt: this.statusValue.startedAt ?? new Date().toISOString(),
       ...(this.statusValue.finishedAt ? { finishedAt: this.statusValue.finishedAt } : {}),
       complete,
+      ...this.supplementalMetadata,
+      ...(subjectId || position
+        ? {
+            subject: {
+              ...(subjectId ? { id: subjectId } : {}),
+              ...(position ? { position } : {}),
+            },
+          }
+        : {}),
       stats: {
         datagrams: this.statusValue.datagrams,
         frames: this.statusValue.frames,
@@ -180,6 +219,65 @@ export class DashboardRecorder {
     await mkdir(dirname(this.statusValue.metaPath), { recursive: true });
     await writeFile(this.statusValue.metaPath, `${JSON.stringify(meta, null, 2)}\n`);
   }
+}
+
+function decodeRecordingRequest(value: string): DecodedRecordingRequest {
+  if (!value.startsWith(METADATA_PREFIX)) return { label: value, metadata: {} };
+  try {
+    const decoded = JSON.parse(
+      Buffer.from(value.slice(METADATA_PREFIX.length), 'base64url').toString('utf8'),
+    ) as Record<string, unknown>;
+    const label = requiredText(decoded.label, 'recording label');
+    const target = decoded.target === 'position' ? 'position' : decoded.target === 'label' ? 'label' : undefined;
+    const subjectId = optionalText(decoded.subjectId);
+    const day = optionalText(decoded.day);
+    const movement = optionalText(decoded.movement);
+    const position = decodePosition(decoded.position);
+    return {
+      label,
+      metadata: {
+        ...(target ? { target } : {}),
+        ...(subjectId ? { subjectId } : {}),
+        ...(day ? { day } : {}),
+        ...(movement ? { movement } : {}),
+        ...(position ? { position } : {}),
+      },
+    };
+  } catch (error) {
+    throw new Error(
+      `invalid recording metadata: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
+
+function decodePosition(value: unknown): PositionMetadata | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const record = value as Record<string, unknown>;
+  const label = requiredText(record.label, 'position label');
+  const x = nullableNumber(record.x);
+  const y = nullableNumber(record.y);
+  if ((x === null) !== (y === null)) throw new Error('position x and y must both be set or both be null');
+  if (x !== null && (x < 0 || x > 1 || y === null || y < 0 || y > 1)) {
+    throw new Error('position x and y must be normalized values between 0 and 1');
+  }
+  return { label, x, y };
+}
+
+function nullableNumber(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') return null;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) throw new Error('position coordinates must be finite numbers');
+  return parsed;
+}
+
+function optionalText(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+function requiredText(value: unknown, name: string): string {
+  const result = optionalText(value);
+  if (!result) throw new Error(`${name} is required`);
+  return result;
 }
 
 function boundedInt(value: number, min: number, max: number): number {
