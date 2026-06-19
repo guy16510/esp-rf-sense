@@ -1,9 +1,6 @@
 {
   "extends": "../../tsconfig.base.json",
-  "compilerOptions": {
-    "rootDir": "src",
-    "outDir": "dist"
-  },
+  "compilerOptions": {"rootDir": "src", "outDir": "dist"},
   "files": [
     "src/activity.ts",
     "src/cli.ts",
@@ -15,14 +12,17 @@
     "src/features.ts",
     "src/four-node-cli.ts",
     "src/input-buffer.ts",
+    "src/joint-packet-aligner.ts",
     "src/model.ts",
     "src/multi-node-engine.ts",
     "src/multi-node-web-server.ts",
     "src/numeric-features.ts",
     "src/protocol.ts",
+    "src/protocol-v2.ts",
     "src/prototype-training.ts",
     "src/ring-buffer.ts",
     "src/room-geometry.ts",
+    "src/simulated-xy-pipeline.ts",
     "src/web-server.ts"
   ]
 }
