@@ -1,0 +1,122 @@
+name: localization-gate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: localization-gate-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  localization-contract:
+    name: four-receiver localization contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Static validation
+        run: |
+          npm run format:check
+          npm run lint
+          npm run typecheck
+
+      - name: Protocol v2 and joint alignment
+        run: |
+          mkdir -p artifacts/localization
+          npx vitest run \
+            apps/dashboard/src/protocol-v2.test.ts \
+            apps/dashboard/src/joint-packet-aligner.test.ts \
+            --reporter=verbose \
+            2>&1 | tee artifacts/localization/protocol-and-alignment.log
+
+      - name: Train and validate synthetic XY model
+        run: |
+          npx vitest run \
+            apps/dashboard/src/simulated-xy-pipeline.test.ts \
+            --reporter=verbose \
+            2>&1 | tee artifacts/localization/synthetic-xy.log
+
+      - name: Build dashboard and host services
+        run: npm run build 2>&1 | tee artifacts/localization/build.log
+
+      - name: Write localization verdict
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p artifacts/localization
+          cat > artifacts/localization/verdict.json <<JSON
+          {
+            "schemaVersion": 1,
+            "repository": "${GITHUB_REPOSITORY}",
+            "sha": "${GITHUB_SHA}",
+            "runId": "${GITHUB_RUN_ID}",
+            "workflow": "localization-gate",
+            "syntheticValidationOnly": true,
+            "hardwareValidated": false,
+            "claimAllowed": "Synthetic four-receiver XY pipeline passes CI. Real-room XY reliability is not established until recorded multi-day hardware datasets pass the same promotion gates."
+          }
+          JSON
+
+      - name: Upload localization evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: localization-evidence-${{ github.sha }}
+          path: artifacts/localization
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish PR result
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const marker = '<!-- localization-gate -->';
+            const passed = '${{ job.status }}' === 'success';
+            const body = `${marker}\n## Four-receiver localization gate: ${passed ? 'PASS' : 'FAIL'}\n\n` +
+              `Commit: \`${context.sha}\`\n\n` +
+              `- Protocol v2 and joint packet alignment\n` +
+              `- Synthetic four-sensor training and unseen-coordinate validation\n` +
+              `- Uncertainty, empty-room, OOD, and insufficient-receiver rejection\n` +
+              `- Typecheck, lint, formatting, and production build\n\n` +
+              `Evidence artifact: \`localization-evidence-${context.sha}\`\n\n` +
+              `Important: this proves the deterministic simulator and software pipeline, not real-room accuracy. Hardware promotion requires recorded four-receiver datasets across people, positions, orientations, and days.`;
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              per_page: 100,
+            });
+            const existing = comments.find(comment => comment.user.type === 'Bot' && comment.body?.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }
