@@ -22,12 +22,25 @@ export interface ActivityDiagnostics {
   clearStreak: number;
 }
 
+export interface PositionEstimate {
+  accepted: boolean;
+  zone: string | null;
+  x: number | null;
+  y: number | null;
+  confidence: number;
+  margin: number;
+  contributors: number;
+  agreement: number;
+  reason: string | null;
+}
+
 export interface DashboardState {
   timestamp: number;
   state: ActivityState;
   confidence: number;
   motion: number;
   zone: string | null;
+  position: PositionEstimate | null;
   bubbles: ActivityBubble[];
   amplitudeProfile: number[];
   frameRateHz: number;
@@ -39,6 +52,7 @@ export interface DashboardState {
   datagrams: number;
   invalidDatagrams: number;
   mode: 'heuristic' | 'portable-model' | 'fused';
+  modelTarget?: 'presence' | 'label' | 'position';
   scores: Record<string, number>;
   diagnostics: ActivityDiagnostics;
   source?: 'real' | 'replay' | 'simulated';
@@ -77,6 +91,23 @@ export interface DeviceTelemetry {
   config: Record<string, unknown> | null;
 }
 
+export interface ValidationMetric {
+  protocol: 'leave-one-recording-out' | 'leave-one-person-out' | 'leave-one-day-out' | 'leave-one-position-out';
+  status: 'pass' | 'fail' | 'not-applicable' | 'diagnostic';
+  folds: number;
+  samples: number;
+  accuracy: number | null;
+  unknownRejection: number | null;
+  note: string;
+}
+
+export interface ModelValidationReport {
+  leakageSafe: true;
+  generatedAt: string;
+  metrics: ValidationMetric[];
+  warnings: string[];
+}
+
 export interface PortableModelBundle {
   format: 'rfsense-portable-model/1';
   target: 'presence' | 'label' | 'position';
@@ -88,4 +119,8 @@ export interface PortableModelBundle {
   prototypes: Record<string, number[]>;
   zones: Record<string, { x: number | null; y: number | null }>;
   temperature?: number;
+  confidenceThreshold?: number;
+  marginThreshold?: number;
+  distanceThreshold?: number;
+  validation?: ModelValidationReport;
 }
