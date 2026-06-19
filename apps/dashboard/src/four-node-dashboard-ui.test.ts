@@ -10,7 +10,7 @@ afterEach(async () => {
 });
 
 describe('four-node dashboard UI', () => {
-  it('serves the per-node control center and D3 room assets', async () => {
+  it('serves the per-node control center, D3 room assets, and guided room onboarding', async () => {
     const server = new MultiNodeDashboardServer(new MultiNodeEngine(), {
       host: '127.0.0.1',
       port: 0,
@@ -29,6 +29,15 @@ describe('four-node dashboard UI', () => {
     expect(page).toContain('Four-node RF control center');
     expect(page).toContain('id="nodeGrid"');
     expect(page).toContain('id="nodeCardTemplate"');
+    expect(page).toContain('id="roomSetupLaunch"');
+    expect(page).toContain('id="roomSetup"');
+    expect(page).toContain('GUIDED SETUP');
+    expect(page).toContain('Set up room');
+    expect(page).toContain('Record empty room');
+    expect(page).toContain('Record one stationary and one moving session');
+    expect(page).toContain("format:'rfsense-room-geometry/1'");
+    expect(page).toContain('REQUIRED_MATCHES');
+    expect(page).toContain("request('/api/model/train'");
     expect(page).not.toContain('ESP32-S3 telemetry');
 
     const cssResponse = await fetch(`http://127.0.0.1:${port}/four-node-dashboard.css`);

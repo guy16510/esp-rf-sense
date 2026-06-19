@@ -6,6 +6,60 @@
     <meta name="color-scheme" content="dark" />
     <title>RF-Sense four-node control center</title>
     <link rel="stylesheet" href="/four-node-dashboard.css?v=2" />
+    <style>
+      .room-setup-launch { display:grid; gap:1px; min-width:130px; padding:8px 12px; border:1px solid rgba(45,212,191,.3); border-radius:10px; background:rgba(13,148,136,.12); color:#d7fff4; text-align:left; cursor:pointer }
+      .room-setup-launch span { font-size:12px; font-weight:800 }
+      .room-setup-launch small { color:#8ca3aa; font-size:10px }
+      .room-setup-launch.complete { border-color:rgba(74,222,128,.45); background:rgba(22,163,74,.13) }
+      .room-setup[hidden] { display:none }
+      .room-setup { position:fixed; inset:0; z-index:1000; display:grid; grid-template-columns:minmax(0,1fr) min(820px,96vw) }
+      .room-setup-backdrop { background:rgba(0,5,8,.72); backdrop-filter:blur(4px) }
+      .room-setup-sheet { min-width:0; height:100vh; overflow:auto; background:#071116; border-left:1px solid rgba(148,163,184,.16); box-shadow:-24px 0 80px rgba(0,0,0,.45) }
+      .room-setup-header { position:sticky; top:0; z-index:3; display:flex; justify-content:space-between; gap:24px; padding:24px 28px 18px; background:rgba(7,17,22,.97); border-bottom:1px solid rgba(148,163,184,.12) }
+      .room-setup-header h2 { margin:4px 0 6px; font-size:24px }
+      .room-setup-header p { margin:0; color:#8ca3aa }
+      .room-setup-close { width:40px; height:40px; border-radius:10px; font-size:25px }
+      .room-setup-steps { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:8px; padding:18px 28px; border-bottom:1px solid rgba(148,163,184,.1) }
+      .room-setup-steps button { display:grid; justify-items:start; gap:6px; padding:10px; border:1px solid rgba(148,163,184,.12); border-radius:10px; background:rgba(15,23,42,.36); color:#8ca3aa; text-align:left }
+      .room-setup-steps button b { display:grid; place-items:center; width:22px; height:22px; border-radius:50%; background:rgba(148,163,184,.14); color:#cbd5e1; font-size:11px }
+      .room-setup-steps button.active { border-color:rgba(45,212,191,.45); color:#e6fffb; background:rgba(13,148,136,.12) }
+      .room-setup-steps button.complete b { background:rgba(22,163,74,.22); color:#86efac }
+      .room-setup-content { padding:24px 28px 110px }
+      .setup-panel { display:grid; gap:18px }
+      .setup-callout { padding:16px 18px; border:1px solid rgba(45,212,191,.18); border-radius:12px; background:rgba(13,148,136,.08) }
+      .setup-callout.warning { border-color:rgba(251,191,36,.24); background:rgba(180,83,9,.09) }
+      .setup-callout.success { border-color:rgba(74,222,128,.28); background:rgba(22,163,74,.09) }
+      .setup-callout p, .setup-caveat p { margin:6px 0 0; color:#9db0b7; line-height:1.5 }
+      .setup-fields { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px }
+      .setup-fields label, .setup-zone label { display:grid; gap:6px; color:#8ca3aa; font-size:12px }
+      .setup-fields input, .setup-zone input { width:100%; box-sizing:border-box; border:1px solid rgba(148,163,184,.2); border-radius:9px; padding:10px 11px; background:#030c11; color:#e5f6f3 }
+      .setup-receivers, .setup-zones { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px }
+      .setup-receiver, .setup-zone, .setup-validation { display:grid; gap:10px; padding:14px; border:1px solid rgba(148,163,184,.15); border-radius:12px; background:rgba(15,23,42,.25) }
+      .setup-receiver.ready, .setup-zone.complete, .setup-validation.complete { border-color:rgba(74,222,128,.28) }
+      .setup-receiver header, .setup-zone header, .setup-validation { display:flex; justify-content:space-between; align-items:center; gap:12px }
+      .setup-receiver small, .setup-zone small, .setup-validation small, .setup-note { color:#8ca3aa }
+      .setup-zone header label { flex:1 }
+      .setup-coordinates, .setup-captures { display:grid; grid-template-columns:1fr 1fr; gap:8px }
+      .setup-captures button { display:grid; gap:3px; padding:10px; border-radius:9px; text-align:left }
+      .setup-captures span { color:#8ca3aa; font-size:10px }
+      .setup-progress-card, .setup-recording { display:grid; gap:10px; padding:14px; border:1px solid rgba(148,163,184,.14); border-radius:12px }
+      .setup-progress-card>div:first-child, .setup-recording>div:first-child { display:flex; justify-content:space-between; gap:12px }
+      .setup-progress { height:8px; overflow:hidden; border-radius:999px; background:rgba(148,163,184,.12) }
+      .setup-progress i { display:block; height:100%; border-radius:inherit; background:linear-gradient(90deg,#0f766e,#2dd4bf) }
+      .setup-primary { min-height:46px; border-radius:11px; border-color:#14b8a6; background:#0f766e; color:#ecfeff; font-weight:800 }
+      .setup-checklist { display:grid; gap:9px }
+      .setup-checklist div { display:flex; gap:10px; padding:11px 13px; border:1px solid rgba(248,113,113,.16); border-radius:10px; color:#fca5a5 }
+      .setup-checklist div.passed { border-color:rgba(74,222,128,.18); color:#86efac }
+      .setup-validation-list { display:grid; gap:10px }
+      .setup-message { margin:0; padding:12px 14px; border-radius:10px; background:rgba(15,118,110,.1); color:#ccfbf1 }
+      .setup-footer { position:fixed; right:0; bottom:0; width:min(820px,96vw); box-sizing:border-box; display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:16px; padding:16px 28px; border-top:1px solid rgba(148,163,184,.14); background:rgba(7,17,22,.97) }
+      .setup-footer div { display:grid; justify-items:center; gap:3px }
+      .setup-footer small { color:#8ca3aa; text-align:center }
+      .setup-footer .primary { border-color:#14b8a6; background:#0f766e; color:#ecfeff }
+      body.room-setup-open { overflow:hidden }
+      @media (max-width: 800px) { .room-setup-steps { grid-template-columns:repeat(3,minmax(0,1fr)) } }
+      @media (max-width: 640px) { .room-setup { grid-template-columns:1fr } .room-setup-backdrop { display:none } .room-setup-sheet { width:100vw } .room-setup-header,.room-setup-content,.room-setup-steps { padding-left:16px; padding-right:16px } .setup-footer { width:100vw; padding:12px 16px } .setup-fields,.setup-receivers,.setup-zones { grid-template-columns:1fr } }
+    </style>
   </head>
   <body>
     <header class="topbar">
@@ -15,9 +69,8 @@
         <p>Each receiver is shown independently, with fused activity kept separate.</p>
       </div>
       <div class="topbar-status" aria-live="polite">
-        <span class="status-pill"
-          ><i id="streamDot"></i><span id="streamStatus">Connecting</span></span
-        >
+        <button id="roomSetupLaunch" class="room-setup-launch" type="button"><span>Set up room</span><small>0 of 6 complete</small></button>
+        <span class="status-pill"><i id="streamDot"></i><span id="streamStatus">Connecting</span></span>
         <span id="fleetStatus" class="status-pill">0 / 4 ready</span>
       </div>
     </header>
@@ -36,132 +89,57 @@
             <span class="meter"><i id="fusedConfidenceBar"></i></span>
           </div>
         </article>
-        <article class="summary-card">
-          <span>Ready nodes</span><strong id="readyNodes">0 / 4</strong
-          ><small id="readinessDetail">No nodes discovered</small>
-        </article>
-        <article class="summary-card">
-          <span>Combined rate</span><strong id="combinedRate">0.0 Hz</strong
-          ><small id="combinedFrames">0 frames</small>
-        </article>
-        <article class="summary-card">
-          <span>Total datagrams</span><strong id="totalDatagrams">0</strong
-          ><small id="invalidDatagrams">0 invalid</small>
-        </article>
-        <article class="summary-card">
-          <span>Node disagreement</span><strong id="disagreement">0%</strong
-          ><small id="contributors">0 contributors</small>
-        </article>
+        <article class="summary-card"><span>Ready nodes</span><strong id="readyNodes">0 / 4</strong><small id="readinessDetail">No nodes discovered</small></article>
+        <article class="summary-card"><span>Combined rate</span><strong id="combinedRate">0.0 Hz</strong><small id="combinedFrames">0 frames</small></article>
+        <article class="summary-card"><span>Total datagrams</span><strong id="totalDatagrams">0</strong><small id="invalidDatagrams">0 invalid</small></article>
+        <article class="summary-card"><span>Node disagreement</span><strong id="disagreement">0%</strong><small id="contributors">0 contributors</small></article>
       </section>
 
       <section class="section-heading">
-        <div>
-          <span class="eyebrow">LIVE RECEIVERS</span>
-          <h2>Node-by-node streams</h2>
-          <p>Four fixed slots, one card per ESP32 CSI receiver.</p>
-        </div>
+        <div><span class="eyebrow">LIVE RECEIVERS</span><h2>Node-by-node streams</h2><p>Four fixed slots, one card per ESP32 CSI receiver.</p></div>
         <button id="resetAllButton" type="button">Relearn all baselines</button>
       </section>
 
-      <section
-        id="nodeGrid"
-        class="node-grid"
-        aria-live="polite"
-        aria-label="RF node status"
-      ></section>
+      <section id="nodeGrid" class="node-grid" aria-live="polite" aria-label="RF node status"></section>
 
       <section class="analysis-grid">
         <article class="panel chart-panel">
-          <div class="panel-heading">
-            <div>
-              <span class="eyebrow">FUSED SUBCARRIERS</span>
-              <h2>Combined CSI amplitude profile</h2>
-            </div>
-            <span id="subcarrierCount" class="muted">0 subcarriers</span>
-          </div>
-          <svg
-            id="fusedProfile"
-            class="large-chart"
-            viewBox="0 0 1000 240"
-            role="img"
-            aria-label="Fused CSI amplitude profile"
-          ></svg>
+          <div class="panel-heading"><div><span class="eyebrow">FUSED SUBCARRIERS</span><h2>Combined CSI amplitude profile</h2></div><span id="subcarrierCount" class="muted">0 subcarriers</span></div>
+          <svg id="fusedProfile" class="large-chart" viewBox="0 0 1000 240" role="img" aria-label="Fused CSI amplitude profile"></svg>
         </article>
-
         <article class="panel chart-panel">
-          <div class="panel-heading">
-            <div>
-              <span class="eyebrow">ROLLING FUSION</span>
-              <h2>Motion and confidence</h2>
-            </div>
-            <span class="chart-legend"
-              ><i class="motion-key"></i>Motion <i class="confidence-key"></i>Confidence</span
-            >
-          </div>
-          <svg
-            id="historyChart"
-            class="large-chart"
-            viewBox="0 0 1000 240"
-            role="img"
-            aria-label="Fused motion and confidence history"
-          ></svg>
+          <div class="panel-heading"><div><span class="eyebrow">ROLLING FUSION</span><h2>Motion and confidence</h2></div><span class="chart-legend"><i class="motion-key"></i>Motion <i class="confidence-key"></i>Confidence</span></div>
+          <svg id="historyChart" class="large-chart" viewBox="0 0 1000 240" role="img" aria-label="Fused motion and confidence history"></svg>
         </article>
       </section>
 
       <section class="operations-grid">
         <article class="panel operations-panel">
-          <div class="panel-heading">
-            <div>
-              <span class="eyebrow">CAPTURE</span>
-              <h2>Training recordings</h2>
-            </div>
-            <span id="recordingBadge" class="badge neutral">Idle</span>
-          </div>
+          <div class="panel-heading"><div><span class="eyebrow">CAPTURE</span><h2>Training recordings</h2></div><span id="recordingBadge" class="badge neutral">Idle</span></div>
           <div class="operation-body">
             <div class="button-row">
               <button data-recording-label="empty" type="button">Record empty room</button>
               <button data-recording-label="occupied-moving" type="button">Record moving</button>
-              <button data-recording-label="occupied-stationary" type="button">
-                Record stationary
-              </button>
+              <button data-recording-label="occupied-stationary" type="button">Record stationary</button>
               <button id="stopRecordingButton" class="danger" type="button">Stop recording</button>
             </div>
             <p id="recordingStatus" class="muted">No recording active.</p>
           </div>
         </article>
-
         <article class="panel operations-panel">
-          <div class="panel-heading">
-            <div>
-              <span class="eyebrow">MODEL</span>
-              <h2>Label classifier</h2>
-            </div>
-            <span id="modelBadge" class="badge neutral">Not loaded</span>
-          </div>
+          <div class="panel-heading"><div><span class="eyebrow">MODEL</span><h2>Label classifier</h2></div><span id="modelBadge" class="badge neutral">Not loaded</span></div>
           <div class="operation-body">
-            <div class="button-row">
-              <button id="trainModelButton" type="button">Train from recordings</button>
-              <button id="loadModelButton" type="button">Load latest model</button>
-            </div>
+            <div class="button-row"><button id="trainModelButton" type="button">Train from recordings</button><button id="loadModelButton" type="button">Load latest model</button></div>
             <p id="modelStatus" class="muted">Train a label model from saved empty, moving, and stationary recordings.</p>
             <div id="modelLabels" class="label-list"></div>
           </div>
         </article>
-
         <article class="panel operations-panel">
-          <div class="panel-heading">
-            <div>
-              <span class="eyebrow">SYSTEM STATUS</span>
-              <h2>Readiness and limits</h2>
-            </div>
-            <span id="readinessBadge" class="badge neutral">Waiting</span>
-          </div>
+          <div class="panel-heading"><div><span class="eyebrow">SYSTEM STATUS</span><h2>Readiness and limits</h2></div><span id="readinessBadge" class="badge neutral">Waiting</span></div>
           <div class="operation-body">
             <div id="diagnosticBanner" class="diagnostic-banner">Waiting for node data.</div>
             <div id="capabilityList" class="capability-list"></div>
-            <p id="systemCaveat" class="muted">
-              Four RF links indicate disturbance, not identity, pose, exact range, or people count.
-            </p>
+            <p id="systemCaveat" class="muted">Four RF links indicate disturbance, not identity, pose, exact range, or people count.</p>
           </div>
         </article>
       </section>
@@ -169,56 +147,206 @@
 
     <template id="nodeCardTemplate">
       <article class="node-card missing">
-        <header class="node-header">
-          <div>
-            <span class="node-slot"></span>
-            <h3 class="node-name"></h3>
-            <code class="node-id"></code>
-          </div>
-          <span class="node-badge badge neutral"></span>
-        </header>
-        <div class="node-signal-row">
-          <div class="node-state-block">
-            <span class="label">RF state</span>
-            <strong class="node-state"></strong>
-            <small class="node-age"></small>
-          </div>
-          <div class="node-rate-block">
-            <span>CSI rate</span><strong class="node-rate"></strong>
-          </div>
-        </div>
-        <div class="node-meter-block">
-          <div><span>Baseline</span><strong class="node-baseline-value"></strong></div>
-          <span class="meter"><i class="node-baseline-bar"></i></span>
-        </div>
-        <div class="node-metrics">
-          <div><span>Confidence</span><strong class="node-confidence"></strong></div>
-          <div><span>Motion</span><strong class="node-motion"></strong></div>
-          <div><span>Activation</span><strong class="node-activation"></strong></div>
-          <div><span>Packet loss</span><strong class="node-loss"></strong></div>
-        </div>
-        <svg
-          class="node-profile"
-          viewBox="0 0 400 90"
-          role="img"
-          aria-label="Node CSI amplitude profile"
-        ></svg>
-        <div class="node-packet-grid">
-          <div><span>Datagrams</span><strong class="node-datagrams"></strong></div>
-          <div><span>Window frames</span><strong class="node-frames"></strong></div>
-          <div><span>Invalid</span><strong class="node-invalid"></strong></div>
-          <div><span>Missing</span><strong class="node-missing"></strong></div>
-          <div><span>Duplicate</span><strong class="node-duplicate"></strong></div>
-          <div><span>Out of order</span><strong class="node-out-of-order"></strong></div>
-        </div>
+        <header class="node-header"><div><span class="node-slot"></span><h3 class="node-name"></h3><code class="node-id"></code></div><span class="node-badge badge neutral"></span></header>
+        <div class="node-signal-row"><div class="node-state-block"><span class="label">RF state</span><strong class="node-state"></strong><small class="node-age"></small></div><div class="node-rate-block"><span>CSI rate</span><strong class="node-rate"></strong></div></div>
+        <div class="node-meter-block"><div><span>Baseline</span><strong class="node-baseline-value"></strong></div><span class="meter"><i class="node-baseline-bar"></i></span></div>
+        <div class="node-metrics"><div><span>Confidence</span><strong class="node-confidence"></strong></div><div><span>Motion</span><strong class="node-motion"></strong></div><div><span>Activation</span><strong class="node-activation"></strong></div><div><span>Packet loss</span><strong class="node-loss"></strong></div></div>
+        <svg class="node-profile" viewBox="0 0 400 90" role="img" aria-label="Node CSI amplitude profile"></svg>
+        <div class="node-packet-grid"><div><span>Datagrams</span><strong class="node-datagrams"></strong></div><div><span>Window frames</span><strong class="node-frames"></strong></div><div><span>Invalid</span><strong class="node-invalid"></strong></div><div><span>Missing</span><strong class="node-missing"></strong></div><div><span>Duplicate</span><strong class="node-duplicate"></strong></div><div><span>Out of order</span><strong class="node-out-of-order"></strong></div></div>
         <p class="node-reasons"></p>
-        <footer class="node-footer">
-          <span class="node-boot"></span>
-          <button class="node-reset-button" type="button">Relearn baseline</button>
-        </footer>
+        <footer class="node-footer"><span class="node-boot"></span><button class="node-reset-button" type="button">Relearn baseline</button></footer>
       </article>
     </template>
 
+    <aside id="roomSetup" class="room-setup" hidden aria-label="Room setup guide">
+      <div class="room-setup-backdrop" data-action="close"></div>
+      <div class="room-setup-sheet" role="dialog" aria-modal="true" aria-labelledby="roomSetupTitle">
+        <header class="room-setup-header">
+          <div><span class="eyebrow">GUIDED SETUP</span><h2 id="roomSetupTitle">Create a reliable room model</h2><p id="roomSetupSubtitle"></p></div>
+          <button class="room-setup-close" type="button" data-action="close" aria-label="Close room setup">×</button>
+        </header>
+        <nav id="roomSetupSteps" class="room-setup-steps" aria-label="Setup steps"></nav>
+        <div id="roomSetupContent" class="room-setup-content"></div>
+        <footer id="roomSetupFooter" class="setup-footer"></footer>
+      </div>
+    </aside>
+
     <script type="module" src="/four-node-dashboard.js?v=3"></script>
+    <script type="module">
+      const KEY = 'rfsense-room-setup/v1';
+      const PREFIX = 'rfsense-meta:';
+      const STEPS = ['Room', 'Receivers', 'Empty baseline', 'Zones', 'Train', 'Validate'];
+      const REQUIRED_MATCHES = 15;
+      const defaults = () => ({
+        version: 1,
+        step: 0,
+        roomName: 'Tap room',
+        widthMeters: 6,
+        heightMeters: 5,
+        subjectId: 'person-1',
+        emptyRecordings: 0,
+        completedRecordingNames: [],
+        zones: [
+          ['door', .5, .12], ['left', .2, .5], ['center', .5, .5], ['right', .8, .5], ['back', .5, .85],
+        ].map(([label, x, y]) => ({ id: label, label, x, y, stationary: 0, moving: 0 })),
+        validation: {},
+        complete: false,
+      });
+      const load = () => {
+        try {
+          const saved = JSON.parse(localStorage.getItem(KEY) || 'null');
+          return saved?.version === 1 && Array.isArray(saved.zones) ? { ...defaults(), ...saved } : defaults();
+        } catch { return defaults(); }
+      };
+      const state = { config: load(), snapshot: null, recording: null, model: null, activeCapture: null, activeValidation: null, message: '' };
+      const byId = (id) => document.getElementById(id);
+      const clamp = (value) => Math.max(0, Math.min(1, Number(value) || 0));
+      const esc = (value) => String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+      const save = () => localStorage.setItem(KEY, JSON.stringify(state.config));
+      const request = async (url, body) => {
+        const response = await fetch(url, body === undefined ? undefined : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        const value = await response.json();
+        if (!response.ok) throw new Error(value.error || response.statusText);
+        return value;
+      };
+      const encode = (value) => {
+        const bytes = new TextEncoder().encode(JSON.stringify(value));
+        let binary = '';
+        for (const byte of bytes) binary += String.fromCharCode(byte);
+        return PREFIX + btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+      };
+      const roomValid = () => Boolean(state.config.roomName.trim() && state.config.subjectId.trim() && state.config.widthMeters > 0 && state.config.heightMeters > 0 && state.config.zones.length >= 2 && new Set(state.config.zones.map((z) => z.label)).size === state.config.zones.length);
+      const zonesReady = () => state.config.zones.every((z) => z.stationary >= 1 && z.moving >= 1);
+      const validated = () => state.config.zones.every((z) => state.config.validation[z.id]);
+      const gates = () => {
+        const flags = [roomValid(), roomValid() && Boolean(state.snapshot?.readiness?.readyForCapture), false, false, false, false];
+        flags[2] = flags[1] && state.config.emptyRecordings >= 2;
+        flags[3] = flags[2] && zonesReady();
+        flags[4] = flags[3] && Boolean(state.model?.loaded && state.model?.target === 'position');
+        flags[5] = flags[4] && validated();
+        let max = 0;
+        for (let i = 0; i < 5 && flags[i]; i += 1) max = i + 1;
+        const blocker = !flags[0] ? 'Enter a room name, dimensions, and person ID.' : !flags[1] ? 'All four receivers must be healthy before capture.' : !flags[2] ? 'Collect two empty-room recordings.' : !flags[3] ? 'Record one stationary and one moving session for every zone.' : !flags[4] ? 'Train and load the position model.' : !flags[5] ? 'Pass the live check for every zone.' : 'Room setup is complete.';
+        return { flags, max, blocker, completed: flags.filter(Boolean).length };
+      };
+      const slots = () => {
+        const nodes = Array.isArray(state.snapshot?.nodes) ? state.snapshot.nodes : [];
+        const ids = Array.isArray(state.snapshot?.slotDeviceIds) ? state.snapshot.slotDeviceIds.map((id) => String(id).toLowerCase()) : [];
+        return ids.length ? ids.slice(0, 4).map((id) => nodes.find((node) => String(node.deviceId).toLowerCase() === id)) : nodes.slice(0, 4);
+      };
+      const check = (label, passed) => `<div class="${passed ? 'passed' : ''}"><b>${passed ? '✓' : '!'}</b><span>${esc(label)}</span></div>`;
+      const recording = () => state.recording?.active ? `<div class="setup-recording"><div><strong>Recording ${esc(state.recording.label)}</strong><small>${state.recording.frames || 0} frames, ${Number(state.recording.elapsedSeconds || 0).toFixed(1)} seconds</small></div><div class="setup-progress"><i style="width:${Math.round(clamp(state.recording.progress) * 100)}%"></i></div><button type="button" data-action="stop">Stop and save</button></div>` : '';
+      const renderStep = () => {
+        const c = state.config;
+        if (c.step === 0) return `<section class="setup-panel"><div class="setup-callout"><strong>Start with the physical room, not the model.</strong><p>Measure the usable sensing area. Keep the router, receivers, furniture, and large metal objects fixed after training.</p></div><div class="setup-fields"><label>Room name<input data-field="roomName" value="${esc(c.roomName)}"></label><label>Width, meters<input data-field="widthMeters" type="number" min="1" step=".1" value="${c.widthMeters}"></label><label>Depth, meters<input data-field="heightMeters" type="number" min="1" step=".1" value="${c.heightMeters}"></label><label>Person ID<input data-field="subjectId" value="${esc(c.subjectId)}"></label></div><p class="setup-note">This flow assumes A-D are placed near the four corners and the router is centered on the front edge.</p></section>`;
+        if (c.step === 1) {
+          const cards = ['A','B','C','D'].map((slot, i) => { const node = slots()[i]; const ready = Boolean(node?.ready); const detail = node ? ready ? `${Number(node.frameRateHz || 0).toFixed(1)} Hz, baseline ready` : (node.readinessReasons || []).join('; ') : 'No receiver discovered'; return `<article class="setup-receiver ${ready ? 'ready' : ''}"><header><b>Receiver ${slot}</b><span>${ready ? 'Ready' : 'Needs attention'}</span></header><strong>${esc(node?.deviceId || 'Not found')}</strong><small>${esc(detail)}</small></article>`; }).join('');
+          return `<section class="setup-panel"><div class="setup-callout ${state.snapshot?.readiness?.readyForCapture ? 'success' : 'warning'}"><strong>${state.snapshot?.readiness?.onlineNodeCount || 0} of 4 receivers ready</strong><p>${esc((state.snapshot?.readiness?.reasons || ['Wait for healthy CSI streams and learned baselines.']).join(' '))}</p></div><div class="setup-receivers">${cards}</div><p class="setup-note">Mount them at a stable height, keep clear RF paths across the room, and do not move them after capture starts.</p></section>`;
+        }
+        if (c.step === 2) return `<section class="setup-panel"><div class="setup-progress-card"><div><span>Empty-room recordings</span><strong>${c.emptyRecordings} / 2</strong></div><div class="setup-progress"><i style="width:${Math.min(100, c.emptyRecordings * 50)}%"></i></div></div><div class="setup-callout warning"><strong>Everyone must leave the sensing area.</strong><p>Close doors and leave the room unchanged. Each capture runs for up to 90 seconds and 2,000 frames.</p></div>${recording()}<button class="setup-primary" type="button" data-action="empty" ${!state.snapshot?.readiness?.readyForCapture || state.recording?.active ? 'disabled' : ''}>Record empty room</button></section>`;
+        if (c.step === 3) {
+          const cards = c.zones.map((z) => `<article class="setup-zone ${z.stationary && z.moving ? 'complete' : ''}"><header><label>Zone label<input data-zone-field="label" data-zone="${z.id}" value="${esc(z.label)}"></label><button type="button" data-action="remove-zone" data-zone="${z.id}" ${c.zones.length <= 2 ? 'disabled' : ''}>×</button></header><div class="setup-coordinates"><label>X<input data-zone-field="x" data-zone="${z.id}" type="number" min="0" max="1" step=".01" value="${z.x}"></label><label>Y<input data-zone-field="y" data-zone="${z.id}" type="number" min="0" max="1" step=".01" value="${z.y}"></label></div><div class="setup-captures"><button type="button" data-action="zone" data-zone="${z.id}" data-movement="stationary" ${state.recording?.active ? 'disabled' : ''}><span>Stand still</span><b>${z.stationary ? '✓' : 'Record'}</b></button><button type="button" data-action="zone" data-zone="${z.id}" data-movement="moving" ${state.recording?.active ? 'disabled' : ''}><span>Move slowly</span><b>${z.moving ? '✓' : 'Record'}</b></button></div></article>`).join('');
+          return `<section class="setup-panel"><div class="setup-callout"><strong>Capture every physical point two different ways.</strong><p>Stand still at the marked point, then move slowly within roughly one step of it. Keep the same label and coordinates.</p></div>${recording()}<div class="setup-zones">${cards}</div><button type="button" data-action="add-zone">Add another zone</button></section>`;
+        }
+        if (c.step === 4) return `<section class="setup-panel"><div class="setup-checklist">${check('Four receivers ready', Boolean(state.snapshot?.readiness?.readyForCapture))}${check('Two empty-room recordings', c.emptyRecordings >= 2)}${check(`${c.zones.length} zones with stationary and moving captures`, zonesReady())}${check('Stable room definition', roomValid())}</div><div class="setup-callout ${state.model?.loaded ? 'success' : ''}"><strong>${state.model?.loaded ? 'Position model loaded.' : 'Train the position classifier.'}</strong><p>The trainer groups windows by recording, rejects under-sampled classes, and loads the resulting model into the live engine.</p></div><button class="setup-primary" type="button" data-action="train" ${!gates().flags[3] ? 'disabled' : ''}>${state.model?.loaded ? 'Retrain position model' : 'Train position model'}</button>${state.message ? `<p class="setup-message">${esc(state.message)}</p>` : ''}</section>`;
+        const rows = c.zones.map((z) => { const active = state.activeValidation?.zoneId === z.id; const pass = Boolean(c.validation[z.id]); return `<article class="setup-validation ${pass ? 'complete' : ''}"><div><strong>${esc(z.label)}</strong><small>${pass ? 'Live check passed' : active ? `${state.activeValidation.matches} / ${REQUIRED_MATCHES} matching snapshots` : 'Not validated'}</small></div><button type="button" data-action="validate" data-zone="${z.id}" ${state.activeValidation && !active ? 'disabled' : ''}>${active ? 'Watching…' : pass ? 'Run again' : 'Validate'}</button></article>`; }).join('');
+        return `<section class="setup-panel"><div class="setup-callout ${c.complete ? 'success' : ''}"><strong>Validate live before trusting the position dot.</strong><p>Stand at each zone. The model must return the correct accepted zone for ${REQUIRED_MATCHES} consecutive dashboard snapshots.</p></div>${state.message ? `<p class="setup-message">${esc(state.message)}</p>` : ''}<div class="setup-validation-list">${rows}</div><div class="setup-caveat"><strong>What this model can claim</strong><p>It estimates one coarse trained zone with uncertainty. It does not prove exact body coordinates, identity, pose, or people count.</p></div></section>`;
+      };
+      const render = () => {
+        const g = gates();
+        byId('roomSetupLaunch').innerHTML = state.config.complete ? '<span>Room ready</span><small>Review setup</small>' : `<span>Set up room</span><small>${g.completed} of 6 complete</small>`;
+        byId('roomSetupLaunch').classList.toggle('complete', state.config.complete);
+        if (byId('roomSetup').hidden) return;
+        byId('roomSetupSubtitle').textContent = ['Define the physical sensing area and calibration person.','Verify four CSI streams and lock receiver placement.','Teach the system what the empty room looks like.','Collect repeated examples at known room points.','Build and load a grouped position classifier.','Prove the live model recognizes every zone.'][state.config.step];
+        byId('roomSetupSteps').innerHTML = STEPS.map((label, i) => `<button type="button" data-step="${i}" class="${i === state.config.step ? 'active' : ''} ${i < g.max || (i === 5 && state.config.complete) ? 'complete' : ''}" ${i > g.max ? 'disabled' : ''}><b>${i < g.max || (i === 5 && state.config.complete) ? '✓' : i + 1}</b><span>${label}</span></button>`).join('');
+        byId('roomSetupContent').innerHTML = renderStep();
+        byId('roomSetupFooter').innerHTML = `<button type="button" data-action="back" ${state.config.step === 0 ? 'disabled' : ''}>Back</button><div><strong>${g.completed} of 6 steps complete</strong><small>${esc(g.blocker)}</small></div>${state.config.step === 5 ? `<button type="button" class="primary" data-action="finish" ${!validated() ? 'disabled' : ''}>Finish setup</button>` : `<button type="button" class="primary" data-action="next" ${state.config.step >= g.max ? 'disabled' : ''}>Continue</button>`}`;
+      };
+      const open = (value) => { byId('roomSetup').hidden = !value; document.body.classList.toggle('room-setup-open', value); render(); };
+      const startCapture = async (kind, zoneId, movement) => {
+        if (!state.snapshot?.readiness?.readyForCapture || state.recording?.active) return;
+        const zone = state.config.zones.find((z) => z.id === zoneId);
+        const empty = kind === 'empty';
+        const meta = { label: empty ? 'empty' : `occupied-${zone.label}`, target: 'position', subjectId: empty ? undefined : state.config.subjectId, day: new Date().toISOString().slice(0, 10), movement: empty ? 'empty' : movement, position: empty ? { label: 'empty', x: null, y: null } : { label: zone.label, x: zone.x, y: zone.y } };
+        try {
+          state.recording = await request('/api/recording/start', { label: encode(meta), targetSeconds: 90, targetFrames: 2000 });
+          state.activeCapture = { kind, zoneId, movement, name: state.recording.name };
+          state.message = `Recording ${empty ? 'the empty room' : `${zone.label}, ${movement}`}.`;
+        } catch (error) { state.message = error.message; }
+        render();
+      };
+      const finishRecording = (recordingStatus) => {
+        state.recording = recordingStatus;
+        const active = state.activeCapture;
+        if (!active || recordingStatus?.active || !recordingStatus?.finishedAt || active.name !== recordingStatus.name) return;
+        if (state.config.completedRecordingNames.includes(recordingStatus.name)) { state.activeCapture = null; return; }
+        if (!recordingStatus.frames || recordingStatus.error) { state.message = 'Recording ended without usable frames. Fix receiver health and repeat it.'; state.activeCapture = null; return; }
+        state.config.completedRecordingNames.push(recordingStatus.name);
+        if (active.kind === 'empty') state.config.emptyRecordings += 1;
+        else { const zone = state.config.zones.find((z) => z.id === active.zoneId); if (zone) zone[active.movement] += 1; }
+        state.activeCapture = null;
+        state.config.complete = false;
+        save(); render();
+      };
+      const geometry = () => {
+        const nodes = slots();
+        if (nodes.length !== 4 || nodes.some((node) => !node?.deviceId)) throw new Error('Four mapped receiver device IDs are required.');
+        const w = state.config.widthMeters, h = state.config.heightMeters;
+        const points = [['A',0,0],['B',w,0],['C',0,h],['D',w,h]];
+        return { format:'rfsense-room-geometry/1', room:{ name:state.config.roomName, widthMeters:w, heightMeters:h }, transmitter:{ name:'room-router', x:w/2, y:0 }, receivers:points.map(([slot,x,y],i) => ({ slot, x, y, deviceId:String(nodes[i].deviceId).replace(/^0x/,'').padStart(8,'0'), name:`Receiver ${slot}` })), zones:Object.fromEntries(state.config.zones.map((z) => [z.label,{ x:z.x*w, y:z.y*h }])) };
+      };
+      const train = async () => {
+        state.message = 'Training the grouped position model…'; render();
+        try {
+          state.model = await request('/api/model/train', { target:'position', window:64, step:32, minRecordingsPerClass:2, roomGeometry:geometry() });
+          state.config.validation = {}; state.config.complete = false; state.config.step = 5;
+          state.message = `Model loaded with ${(state.model.classes || []).length} classes. Validate every zone now.`;
+        } catch (error) { state.message = error.message; }
+        save(); render();
+      };
+      const validateZone = (zoneId) => {
+        const zone = state.config.zones.find((z) => z.id === zoneId);
+        state.activeValidation = { zoneId, label:zone.label, matches:0, deadline:Date.now()+45000 };
+        state.message = `Stand at ${zone.label}. Waiting for accepted predictions.`; render();
+      };
+      const evaluate = (snapshot) => {
+        const active = state.activeValidation;
+        if (!active) return;
+        if (Date.now() > active.deadline) { state.message = `${active.label} timed out. Review diagnostics and retry.`; state.activeValidation = null; return render(); }
+        const p = snapshot?.fused?.position;
+        active.matches = p?.accepted && p.zone === active.label ? active.matches + 1 : 0;
+        if (active.matches >= REQUIRED_MATCHES) { state.config.validation[active.zoneId] = true; state.message = `${active.label} passed live validation.`; state.activeValidation = null; state.config.complete = validated(); save(); }
+        render();
+      };
+      byId('roomSetupLaunch').addEventListener('click', () => open(true));
+      byId('roomSetup').addEventListener('click', async (event) => {
+        const target = event.target.closest('[data-action],[data-step]'); if (!target) return;
+        if (target.dataset.step !== undefined) { const step = Number(target.dataset.step); if (step <= gates().max) state.config.step = step; }
+        const action = target.dataset.action;
+        if (action === 'close') return open(false);
+        if (action === 'back') state.config.step = Math.max(0, state.config.step - 1);
+        if (action === 'next') state.config.step = Math.min(5, state.config.step + 1);
+        if (action === 'empty') await startCapture('empty');
+        if (action === 'zone') await startCapture('zone', target.dataset.zone, target.dataset.movement);
+        if (action === 'stop') { try { finishRecording(await request('/api/recording/stop', {})); } catch (error) { state.message = error.message; } }
+        if (action === 'train') await train();
+        if (action === 'validate') validateZone(target.dataset.zone);
+        if (action === 'add-zone') state.config.zones.push({ id:`zone-${Date.now()}`, label:`zone-${state.config.zones.length+1}`, x:.5, y:.5, stationary:0, moving:0 });
+        if (action === 'remove-zone' && state.config.zones.length > 2) state.config.zones = state.config.zones.filter((z) => z.id !== target.dataset.zone);
+        if (action === 'finish' && validated()) { state.config.complete = true; save(); return open(false); }
+        save(); render();
+      });
+      byId('roomSetup').addEventListener('change', (event) => {
+        if (event.target.dataset.field) state.config[event.target.dataset.field] = ['widthMeters','heightMeters'].includes(event.target.dataset.field) ? Number(event.target.value) : event.target.value.trim();
+        if (event.target.dataset.zoneField) { const zone = state.config.zones.find((z) => z.id === event.target.dataset.zone); const field = event.target.dataset.zoneField; zone[field] = ['x','y'].includes(field) ? clamp(event.target.value) : event.target.value.trim().toLowerCase().replace(/[^a-z0-9-]+/g,'-'); state.config.validation[zone.id] = false; }
+        state.config.complete = false; save(); render();
+      });
+      const stream = window.RfSenseDashboardStream;
+      stream?.on('snapshot', (snapshot) => { state.snapshot = snapshot; evaluate(snapshot); if (!byId('roomSetup').hidden) render(); });
+      stream?.on('recording', (value) => finishRecording(value));
+      stream?.on('model', (value) => { state.model = value; render(); });
+      Promise.all([request('/api/nodes'),request('/api/recording'),request('/api/model')]).then(([snapshot,recordingStatus,model]) => { state.snapshot=snapshot; state.recording=recordingStatus; state.model=model; render(); }).catch(() => render());
+      render();
+    </script>
   </body>
 </html>

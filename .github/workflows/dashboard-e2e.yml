@@ -44,6 +44,10 @@ jobs:
             --udp-host 127.0.0.1 \
             --udp-port 5566 \
             --interval-ms 100 \
+            --slot-a 00000065 \
+            --slot-b 00000066 \
+            --slot-c 00000067 \
+            --slot-d 00000068 \
             > apps/dashboard/e2e/artifacts/dashboard.log 2>&1 &
           echo $! > apps/dashboard/e2e/artifacts/dashboard.pid
           node apps/dashboard/e2e/simulator.mjs \
@@ -61,7 +65,10 @@ jobs:
       - name: Run Playwright end-to-end tests
         env:
           RF_DASHBOARD_URL: http://127.0.0.1:8080
-        run: npx playwright test --config apps/dashboard/e2e/playwright.config.mjs
+        run: |
+          set -o pipefail
+          npx playwright test --config apps/dashboard/e2e/playwright.config.mjs \
+            2>&1 | tee apps/dashboard/e2e/artifacts/playwright.log
 
       - name: Upload browser diagnostics
         if: always()
