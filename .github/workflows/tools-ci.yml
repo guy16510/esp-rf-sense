@@ -36,12 +36,12 @@ jobs:
           name: typecheck-diagnostics
           path: typecheck.log
           if-no-files-found: ignore
-      - name: Unit tests
-        run: npm test
       - name: Packet alignment tests
         run: npx vitest run apps/dashboard/src/protocol-v2.test.ts apps/dashboard/src/joint-packet-aligner.test.ts
       - name: XY localization test
         run: npx vitest run apps/dashboard/src/simulated-xy-pipeline.test.ts
+      - name: Unit tests
+        run: npm test
       - name: Build all workspaces
         run: npm run build
 
