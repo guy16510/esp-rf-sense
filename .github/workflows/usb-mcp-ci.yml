@@ -1,0 +1,26 @@
+name: usb-mcp-ci
+
+on:
+  pull_request:
+    paths:
+      - "tools/usb-mcp/**"
+      - ".github/workflows/usb-mcp-ci.yml"
+  push:
+    paths:
+      - "tools/usb-mcp/**"
+      - ".github/workflows/usb-mcp-ci.yml"
+
+jobs:
+  test:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Syntax check
+        run: |
+          node --check tools/usb-mcp/src/*.mjs
+          node --check tools/usb-mcp/bin/*.mjs
+      - name: Unit tests
+        run: node --test tools/usb-mcp/test/*.test.mjs
