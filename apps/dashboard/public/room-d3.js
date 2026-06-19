@@ -35,7 +35,7 @@ async function loadD3() {
 function injectStyles() {
   const link = document.createElement('link');
   link.rel = 'stylesheet';
-  link.href = '/room-d3.css?v=1';
+  link.href = '/room-d3.css?v=2';
   document.head.append(link);
 }
 
@@ -46,6 +46,7 @@ function buildControlCenter() {
   const receivers = document.querySelector('#nodeGrid');
   const analysis = document.querySelector('.analysis-grid');
   const operations = document.querySelector('.operations-grid');
+  const resetAllButton = document.querySelector('#resetAllButton');
   document.querySelector('.section-heading')?.remove();
 
   const workspace = el('section', 'rf-workspace');
@@ -60,7 +61,10 @@ function buildControlCenter() {
   copy.append(el('h2', '', 'Live RF presence'));
   copy.append(el('p', 'muted', 'Probabilistic disturbance regions fused from four CSI receivers.'));
   const mode = el('span', 'badge neutral', 'Heuristic estimate');
-  roomHeading.append(copy, mode);
+  const roomActions = el('div', 'rf-room-actions');
+  roomActions.append(mode);
+  if (resetAllButton) roomActions.append(resetAllButton);
+  roomHeading.append(copy, roomActions);
 
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.id = 'roomD3';
