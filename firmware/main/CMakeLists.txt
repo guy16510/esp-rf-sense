@@ -14,6 +14,7 @@ idf_component_register(
         ota_manager
         device_health
         device_logs
+        identify_led
         mdns_service
         nvs_flash
         esp_event

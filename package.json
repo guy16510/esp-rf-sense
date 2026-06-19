@@ -40,7 +40,13 @@
     "device:discover": "tsx tools/cli/src/discover.ts",
     "device:ota:check": "tsx tools/cli/src/ota.ts check",
     "device:ota:apply": "tsx tools/cli/src/ota.ts apply",
-    "device:status": "tsx tools/cli/src/status.ts"
+    "device:status": "tsx tools/cli/src/status.ts",
+    "hardware:identify": "node tools/hardware/identify-four-receivers.mjs",
+    "hardware:configure": "node tools/hardware/configure-four-receivers.mjs",
+    "hardware:streams": "node tools/hardware/validate-four-streams.mjs",
+    "hardware:record-xy": "node tools/hardware/record-xy-calibration.mjs",
+    "hardware:train-position": "node tools/hardware/train-position-model.mjs",
+    "hardware:check-position": "node tools/hardware/live-position-check.mjs"
   },
   "devDependencies": {
     "@types/node": "22.19.21",

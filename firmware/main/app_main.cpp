@@ -271,25 +271,10 @@ extern "C" void app_main() {
   ESP_ERROR_CHECK(WifiManager::instance().init());
 
   if (!ConfigStore::instance().isProvisioned()) {
-#ifdef CONFIG_RF_SENSE_CLASSIC_ESP32_EXPERIMENT
-    DeviceConfig experiment{};
-    std::strncpy(experiment.wifiSsid, "YOUR_WIFI_SSID", sizeof(experiment.wifiSsid) - 1);
-    std::strncpy(experiment.wifiPassword, "YOUR_WIFI_PASSWORD",
-                 sizeof(experiment.wifiPassword) - 1);
-    std::strncpy(experiment.collectorHost, "192.168.1.100",
-                 sizeof(experiment.collectorHost) - 1);
-    std::strncpy(experiment.deviceName, "rf-sense-experiment",
-                 sizeof(experiment.deviceName) - 1);
-    experiment.collectorPort = 5566;
-    experiment.provisioned = true;
-    ESP_LOGW(kTag, "seeding disposable hard-coded Wi-Fi and collector configuration");
-    ESP_ERROR_CHECK(ConfigStore::instance().save(experiment));
-#else
     const std::string apSsid = "RF-Sense-" + id4Upper();
     ESP_LOGW(kTag, "device not provisioned; starting SoftAP '%s'", apSsid.c_str());
     ESP_ERROR_CHECK(Provisioning::instance().start(apSsid, kProvisioningApPassword));
     return;  // provisioning saves config and reboots into station mode
-#endif
   }
 
   const DeviceConfig cfg = ConfigStore::instance().get();

@@ -2,7 +2,7 @@ idf_component_register(
     SRCS "ControlApi.cpp"
     INCLUDE_DIRS "include"
     REQUIRES esp_http_server json
-    PRIV_REQUIRES config_store device_health device_logs ota_manager esp_common
+    PRIV_REQUIRES config_store device_health device_logs identify_led ota_manager esp_common
 )
 
 target_compile_definitions(${COMPONENT_LIB} PRIVATE

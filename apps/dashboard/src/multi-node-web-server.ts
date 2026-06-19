@@ -7,6 +7,7 @@ import { trainDashboardModel } from './dashboard-model-trainer.js';
 import type { DashboardRecorder } from './dashboard-recorder.js';
 import { loadPortableModel } from './model.js';
 import type { MultiNodeEngine, MultiNodeSnapshot } from './multi-node-engine.js';
+import { loadRoomGeometry, validateRoomGeometry } from './room-geometry.js';
 
 const APP_PUBLIC_ROOT = fileURLToPath(new URL('../public/', import.meta.url));
 const STATIC_FILES = new Map<string, { root: string; name: string }>([
@@ -179,11 +180,25 @@ export class MultiNodeDashboardServer {
       if (request.method === 'POST' && url.pathname === '/api/model/train') {
         const body = await this.readBody(request);
         const outPath = String(body.path || this.options.modelPath);
+        const target = body.target === 'label' ? 'label' : 'position';
+        const geometry =
+          body.roomGeometry && typeof body.roomGeometry === 'object'
+            ? validateRoomGeometry(body.roomGeometry)
+            : typeof body.roomGeometryPath === 'string' && body.roomGeometryPath.trim()
+              ? await loadRoomGeometry(body.roomGeometryPath)
+              : undefined;
+        const minRecordingsPerClass =
+          body.minRecordingsPerClass === undefined
+            ? undefined
+            : Math.max(1, Math.floor(Number(body.minRecordingsPerClass)));
         const trained = await trainDashboardModel({
           recordingsDir: this.options.recordingsDir,
           outPath,
           window: Math.max(8, Number(body.window ?? 64)),
           step: Math.max(1, Number(body.step ?? 32)),
+          target,
+          ...(geometry ? { geometry } : {}),
+          ...(minRecordingsPerClass ? { minRecordingsPerClass } : {}),
         });
         const loaded = await loadPortableModel(outPath);
         this.engine.setModel(loaded);

@@ -4,7 +4,11 @@ import { defineConfig } from 'vitest/config';
 // analysis package is tested separately with pytest, so it is excluded here.
 export default defineConfig({
   test: {
-    include: ['tools/**/src/**/*.test.ts', 'apps/**/src/**/*.test.ts'],
+    include: [
+      'tools/**/src/**/*.test.ts',
+      'apps/**/src/**/*.test.ts',
+      'tools/hardware/**/*.test.mjs',
+    ],
     exclude: ['**/node_modules/**', '**/dist/**', 'tools/analysis/**'],
   },
 });

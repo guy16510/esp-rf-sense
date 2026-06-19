@@ -2,6 +2,7 @@
 ## Resolved versions are written to dependencies.lock by `idf.py reconfigure`.
 dependencies:
   idf:
-    version: ">=5.3.0,<5.4.0"
+    version: '>=5.3.0,<5.4.0'
   espressif/mdns:
-    version: "^1.4.0"
+    version: ^1.4.0
+  espressif/led_strip: ^2.5.5

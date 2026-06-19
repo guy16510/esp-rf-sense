@@ -20,7 +20,7 @@ const nvsGen = resolve(
 
 const flags = new Set(process.argv.slice(2));
 const dryRun = flags.has('--dry-run');
-const env = { ...process.env, ...readEnv(envPath) };
+const env = { ...readEnv(envPath), ...process.env };
 
 const python =
   env.ESP_PYTHON ||

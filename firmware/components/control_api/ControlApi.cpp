@@ -7,6 +7,7 @@
 #include "ConfigStore.h"
 #include "DeviceHealth.h"
 #include "DeviceLogs.h"
+#include "IdentifyLed.h"
 #include "OtaManager.h"
 #include "cJSON.h"
 #include "esp_http_server.h"
@@ -311,6 +312,39 @@ esp_err_t rebootPost(httpd_req_t* req) {
   return sendJson(req, root, "202 Accepted");
 }
 
+esp_err_t identifyPost(httpd_req_t* req) {
+  uint32_t durationMs = 10000;
+  if (req->content_len > 0) {
+    char body[kMaxBodyLen];
+    if (readBody(req, body, sizeof(body)) < 0) return sendError(req, "400 Bad Request", "body too large");
+    cJSON* parsed = cJSON_Parse(body);
+    if (!parsed) return sendError(req, "400 Bad Request", "invalid json");
+    cJSON* duration = cJSON_GetObjectItemCaseSensitive(parsed, "durationMs");
+    if (duration && cJSON_IsNumber(duration) && duration->valuedouble >= 0) {
+      durationMs = static_cast<uint32_t>(duration->valuedouble);
+    }
+    cJSON_Delete(parsed);
+  }
+
+  const IdentifyLedStatus status = IdentifyLed::instance().status(durationMs);
+  esp_err_t err = ESP_ERR_NOT_SUPPORTED;
+  if (status.supported) err = IdentifyLed::instance().identify(durationMs);
+
+  cJSON* root = cJSON_CreateObject();
+  ControlApi* self = selfOf(req);
+  cJSON_AddNumberToObject(root, "deviceId", self ? self->deviceId() : 0);
+  cJSON_AddBoolToObject(root, "supported", status.supported);
+  cJSON_AddBoolToObject(root, "started", err == ESP_OK);
+  cJSON_AddStringToObject(root, "ledType", status.ledType);
+  cJSON_AddNumberToObject(root, "gpio", status.gpio);
+  cJSON_AddNumberToObject(root, "durationMs", status.durationMs);
+  cJSON_AddStringToObject(root, "message", err == ESP_OK ? "identify started" : status.message);
+  if (err != ESP_OK && err != ESP_ERR_NOT_SUPPORTED) {
+    cJSON_AddStringToObject(root, "error", esp_err_to_name(err));
+  }
+  return sendJson(req, root, "200 OK");
+}
+
 esp_err_t provisioningResetPost(httpd_req_t* req) {
   esp_err_t err = ConfigStore::instance().clearProvisioning();
   if (err != ESP_OK) return sendError(req, "500 Internal Server Error", "nvs clear failed");
@@ -368,6 +402,7 @@ esp_err_t ControlApi::start(uint16_t port) {
   reg("/api/v1/capture/stop", HTTP_POST, captureStopPost);
   reg("/api/v1/ota/check", HTTP_POST, otaCheckPost);
   reg("/api/v1/ota/apply", HTTP_POST, otaApplyPost);
+  reg("/api/v1/identify", HTTP_POST, identifyPost);
   reg("/api/v1/reboot", HTTP_POST, rebootPost);
   reg("/api/v1/provisioning/reset", HTTP_POST, provisioningResetPost);
 

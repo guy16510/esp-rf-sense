@@ -28,6 +28,40 @@ menu "RF-Sense Lab"
             If this many consecutive boots fail to reach a healthy state, the device marks the
             running image invalid and rolls back.
 
+    choice RF_SENSE_IDENTIFY_LED_TYPE
+        prompt "Receiver identify LED type"
+        default RF_SENSE_IDENTIFY_LED_TYPE_WS2812 if IDF_TARGET_ESP32S3
+        default RF_SENSE_IDENTIFY_LED_TYPE_NONE
+        help
+            Enables the /api/v1/identify endpoint used to map physical receiver placement.
+            This endpoint is operational only: it must not affect CSI capture, OTA, or config.
+
+        config RF_SENSE_IDENTIFY_LED_TYPE_NONE
+            bool "No identify LED"
+
+        config RF_SENSE_IDENTIFY_LED_TYPE_GPIO
+            bool "Single GPIO LED"
+
+        config RF_SENSE_IDENTIFY_LED_TYPE_WS2812
+            bool "WS2812 / addressable RGB LED"
+            depends on IDF_TARGET_ESP32S3
+    endchoice
+
+    config RF_SENSE_IDENTIFY_LED_GPIO
+        int "Receiver identify LED GPIO"
+        default 48 if IDF_TARGET_ESP32S3
+        default 2
+        range 0 48
+        depends on !RF_SENSE_IDENTIFY_LED_TYPE_NONE
+        help
+            GPIO used by the receiver identify LED. ESP32-S3 dev boards commonly expose the
+            onboard RGB LED on GPIO48.
+
+    config RF_SENSE_IDENTIFY_LED_ACTIVE_HIGH
+        bool "Single GPIO identify LED is active-high"
+        default y
+        depends on RF_SENSE_IDENTIFY_LED_TYPE_GPIO
+
 endmenu
 config RF_SENSE_CLASSIC_ESP32_EXPERIMENT
     bool "Enable disposable classic ESP32 experiment profile"

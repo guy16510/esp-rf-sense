@@ -1,0 +1,145 @@
+{
+  "generatedAt": "2026-06-19T15:46:03.964Z",
+  "durationSeconds": 29.717000007629395,
+  "pass": false,
+  "failures": [
+    "2f4b47f0 frame rate below 5 Hz",
+    "2f4b47f0 had readiness failures",
+    "2f4b5390 frame rate below 5 Hz",
+    "2f4b5390 had readiness failures",
+    "2f4b735c frame rate below 5 Hz",
+    "2f4b735c had readiness failures",
+    "2f77883c frame rate below 5 Hz",
+    "2f77883c had readiness failures"
+  ],
+  "receivers": [
+    {
+      "deviceId": "2f4b47f0",
+      "samples": 60,
+      "frameRateHz": {
+        "min": 0,
+        "median": 25.7,
+        "max": 39
+      },
+      "lossPpm": {
+        "min": 0,
+        "median": 0,
+        "max": 0
+      },
+      "ageSec": {
+        "min": 0,
+        "median": 0.046,
+        "max": 0.51
+      },
+      "csiWidthChanges": 1,
+      "csiWidths": [
+        380,
+        512
+      ],
+      "totalFrames": 64,
+      "readinessFailures": 2,
+      "reasons": [
+        "frame rate 0.0 Hz is below 5.0 Hz"
+      ]
+    },
+    {
+      "deviceId": "2f4b5390",
+      "samples": 60,
+      "frameRateHz": {
+        "min": 0,
+        "median": 25.5,
+        "max": 41.3
+      },
+      "lossPpm": {
+        "min": 0,
+        "median": 0,
+        "max": 0
+      },
+      "ageSec": {
+        "min": 0,
+        "median": 0.053,
+        "max": 0.679
+      },
+      "csiWidthChanges": 1,
+      "csiWidths": [
+        380,
+        512
+      ],
+      "totalFrames": 64,
+      "readinessFailures": 1,
+      "reasons": [
+        "frame rate 0.0 Hz is below 5.0 Hz"
+      ]
+    },
+    {
+      "deviceId": "2f4b735c",
+      "samples": 60,
+      "frameRateHz": {
+        "min": 0,
+        "median": 25.1,
+        "max": 37.7
+      },
+      "lossPpm": {
+        "min": 0,
+        "median": 0,
+        "max": 0
+      },
+      "ageSec": {
+        "min": 0,
+        "median": 0.036,
+        "max": 0.132
+      },
+      "csiWidthChanges": 1,
+      "csiWidths": [
+        380,
+        512
+      ],
+      "totalFrames": 64,
+      "readinessFailures": 4,
+      "reasons": [
+        "frame rate 0.0 Hz is below 5.0 Hz"
+      ]
+    },
+    {
+      "deviceId": "2f77883c",
+      "samples": 60,
+      "frameRateHz": {
+        "min": 0,
+        "median": 25.3,
+        "max": 40.8
+      },
+      "lossPpm": {
+        "min": 0,
+        "median": 0,
+        "max": 0
+      },
+      "ageSec": {
+        "min": 0,
+        "median": 0.031,
+        "max": 0.534
+      },
+      "csiWidthChanges": 1,
+      "csiWidths": [
+        380,
+        512
+      ],
+      "totalFrames": 64,
+      "readinessFailures": 11,
+      "reasons": [
+        "frame rate 0.0 Hz is below 5.0 Hz"
+      ]
+    }
+  ],
+  "latestReadiness": {
+    "readyForCapture": true,
+    "requiredNodeCount": 4,
+    "onlineNodeCount": 4,
+    "reasons": []
+  },
+  "slotDeviceIds": [
+    "2f4b47f0",
+    "2f4b5390",
+    "2f77883c",
+    "2f4b735c"
+  ]
+}
