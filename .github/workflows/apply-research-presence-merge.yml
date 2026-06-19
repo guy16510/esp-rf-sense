@@ -15,16 +15,30 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.ref }}
-          fetch-depth: 0
+          fetch-depth: 1
+          show-progress: false
+      - name: Verify transport integrity
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .github/research-presence-payload/part-* > /tmp/research-presence.patch.xz.b64
+          echo "Payload bytes: $(wc -c < /tmp/research-presence.patch.xz.b64)"
+          test "$(wc -c < /tmp/research-presence.patch.xz.b64)" -eq 169160
+          echo "b84230324220a59881fa112f3f8636a5d3a80160eae5a99bb3ec81eed9b8d0b2  /tmp/research-presence.patch.xz.b64" | sha256sum -c -
+          base64 --decode /tmp/research-presence.patch.xz.b64 > /tmp/research-presence.patch.xz
+          echo "Compressed bytes: $(wc -c < /tmp/research-presence.patch.xz)"
+          test "$(wc -c < /tmp/research-presence.patch.xz)" -eq 126868
+          echo "53b34e0402b61a42440e6bed1e5b5c43fe42d0f1b4daeb721a657e6fe4f8d025  /tmp/research-presence.patch.xz" | sha256sum -c -
+          xz --test /tmp/research-presence.patch.xz
+          xz --decompress --stdout /tmp/research-presence.patch.xz > /tmp/research-presence.patch
+          echo "Patch bytes: $(wc -c < /tmp/research-presence.patch)"
+          test "$(wc -c < /tmp/research-presence.patch)" -eq 514595
+          echo "92385abc1ce23010fc74ad77ab7f3f0151571d21e79420af4be64d7ae15ce6da  /tmp/research-presence.patch" | sha256sum -c -
+          git apply --check /tmp/research-presence.patch
       - name: Apply validated implementation
         shell: bash
         run: |
           set -euo pipefail
-          cat .github/research-presence-payload/part-* \
-            | base64 --decode \
-            | xz --decompress > /tmp/research-presence.patch
-          echo "92385abc1ce23010fc74ad77ab7f3f0151571d21e79420af4be64d7ae15ce6da  /tmp/research-presence.patch" | sha256sum -c -
-          git apply --check /tmp/research-presence.patch
           git apply /tmp/research-presence.patch
           rm -rf .github/research-presence-payload
           rm -f .github/workflows/apply-research-presence-merge.yml
