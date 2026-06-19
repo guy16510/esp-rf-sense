@@ -10,7 +10,7 @@ afterEach(async () => {
 });
 
 describe('four-node dashboard UI', () => {
-  it('serves the per-node control center and D3 room assets', async () => {
+  it('serves the per-node control center, D3 room assets, and guided room onboarding', async () => {
     const server = new MultiNodeDashboardServer(new MultiNodeEngine(), {
       host: '127.0.0.1',
       port: 0,
@@ -41,6 +41,13 @@ describe('four-node dashboard UI', () => {
     expect(script).toContain("import './dashboard-stream.js'");
     expect(script).toContain("import './four-node-dashboard-core.js'");
     expect(script).toContain("import './room-d3.js'");
+    expect(script).toContain('GUIDED SETUP');
+    expect(script).toContain('Set up room');
+    expect(script).toContain('Record empty room');
+    expect(script).toContain('record one stationary and one moving session');
+    expect(script).toContain("format: 'rfsense-room-geometry/1'");
+    expect(script).toContain('REQUIRED_VALIDATION_SNAPSHOTS');
+    expect(script).toContain("post('/api/model/train'");
 
     const streamResponse = await fetch(`http://127.0.0.1:${port}/dashboard-stream.js`);
     const stream = await streamResponse.text();
