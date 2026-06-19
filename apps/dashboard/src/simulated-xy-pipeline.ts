@@ -133,7 +133,7 @@ export function trainXYModel(examples: XYTrainingExample[]): XYModel {
     examples: occupied,
     featureMean,
     featureScale,
-    densityThreshold: quantile(nearestDistances, 0.99) * 1.5,
+    densityThreshold: quantile(nearestDistances, 0.99) * 2,
     uncertaintyThreshold: 0.75,
   };
 }
