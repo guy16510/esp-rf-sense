@@ -3,25 +3,34 @@ import { dirname, join } from 'node:path';
 
 import type { PortableModelBundle } from './contracts.js';
 import { decodeAmplitude, windowFeatures } from './features.js';
+import {
+  fitPrototype,
+  type TrainingExample,
+  validateExamples,
+} from './prototype-training.js';
 import { parseDatagram } from './protocol.js';
+import type { RoomGeometry } from './room-geometry.js';
 
 interface RecordingMeta {
   name: string;
   label: string;
+  target?: 'label' | 'position';
   complete: boolean;
-  stats?: {
-    frames?: number;
-  };
+  subjectId?: string;
+  day?: string;
+  movement?: string;
+  position?: { label: string; x: number | null; y: number | null };
 }
 
 interface TrainingSummary {
   path: string;
-  target: 'label';
+  target: 'label' | 'position';
   classes: string[];
   recordings: number;
   windows: number;
   window: number;
   trainedAt: string;
+  validation: PortableModelBundle['validation'];
 }
 
 export interface TrainedDashboardModel {
@@ -34,66 +43,88 @@ export async function trainDashboardModel(options: {
   outPath: string;
   window: number;
   step: number;
+  target?: 'label' | 'position';
+  geometry?: RoomGeometry;
+  minRecordingsPerClass?: number;
 }): Promise<TrainedDashboardModel> {
+  const target = options.target ?? 'position';
   const metas = await loadMetas(options.recordingsDir);
-  const featureRows: number[][] = [];
-  const labels: string[] = [];
-  let recordings = 0;
+  const examples: TrainingExample[] = [];
+  const coordinates = new Map<string, { x: number | null; y: number | null }>();
+  const recordingsByClass = new Map<string, Set<string>>();
+  const incompleteMetadata: string[] = [];
 
   for (const meta of metas) {
-    if (!meta.complete) continue;
-    if (!meta.label || meta.label === 'auto-smoke') continue;
+    if (!meta.complete || meta.label === 'auto-smoke') continue;
+    const label = classLabel(meta, target);
+    if (!label) {
+      incompleteMetadata.push(meta.name);
+      continue;
+    }
     const frames = dominantWidth(
       await readAmplitudeFrames(join(options.recordingsDir, `${meta.name}.csi.bin`)),
     );
     const rows = windowsFor(frames, options.window, options.step);
     if (rows.length === 0) continue;
-    recordings++;
-    featureRows.push(...rows);
-    labels.push(...Array(rows.length).fill(meta.label));
+
+    const point = coordinatesFor(label, meta, options.geometry, target);
+    if (target === 'position') mergeCoordinates(coordinates, label, point);
+    const recordings = recordingsByClass.get(label) ?? new Set<string>();
+    recordings.add(meta.name);
+    recordingsByClass.set(label, recordings);
+    for (const features of rows) {
+      examples.push({
+        features,
+        label,
+        recordingId: meta.name,
+        subjectId: String(meta.subjectId ?? '').trim(),
+        day: String(meta.day ?? '').trim(),
+        position: String(meta.position?.label ?? (/empty|clear/iu.test(meta.label) ? 'empty' : '')),
+      });
+    }
   }
 
-  const classes = [...new Set(labels)].sort();
-  if (classes.length < 2) {
+  if (incompleteMetadata.length > 0) {
     throw new Error(
-      `need at least two recorded labels to train; found ${classes.length ? classes.join(', ') : 'none'}`,
+      `position recordings are missing stable position metadata: ${incompleteMetadata.join(', ')}`,
     );
   }
-  const width = featureRows[0]?.length ?? 0;
-  if (width === 0 || featureRows.some((row) => row.length !== width)) {
-    throw new Error('recordings produced inconsistent feature widths');
+  if (examples.length === 0) throw new Error('no complete recordings produced training windows');
+  const classes = [...new Set(examples.map((example) => example.label))].sort();
+  validateClassCoverage(classes, target);
+
+  const minimum = Math.max(
+    1,
+    Math.floor(options.minRecordingsPerClass ?? (target === 'position' ? 2 : 1)),
+  );
+  const underSampled = classes.filter(
+    (label) => (recordingsByClass.get(label)?.size ?? 0) < minimum,
+  );
+  if (underSampled.length > 0) {
+    throw new Error(
+      `collect at least ${minimum} independent recordings per class; under-sampled: ${underSampled.join(', ')}`,
+    );
   }
 
-  const mean = columns(featureRows, (values) => average(values));
-  const scale = columns(
-    featureRows,
-    (values, columnMean) => {
-      const variance = average(values.map((value) => (value - columnMean) ** 2));
-      const deviation = Math.sqrt(variance);
-      return deviation > 1e-12 ? deviation : 1;
-    },
-    mean,
-  );
-  const normalized = featureRows.map((row) =>
-    row.map((value, index) => (value - mean[index]!) / scale[index]!),
-  );
-  const prototypes = Object.fromEntries(
-    classes.map((label) => {
-      const rows = normalized.filter((_row, index) => labels[index] === label);
-      return [label, columns(rows, (values) => average(values))];
-    }),
-  );
+  const fitted = fitPrototype(examples);
+  const validation = validateExamples(examples);
   const bundle: PortableModelBundle = {
     format: 'rfsense-portable-model/1',
-    target: 'label',
+    target,
     window: options.window,
-    nFeatures: width,
+    nFeatures: fitted.mean.length,
     classes,
-    featureMean: mean,
-    featureScale: scale,
-    prototypes,
-    zones: Object.fromEntries(classes.map((label) => [label, { x: null, y: null }])),
-    temperature: 1,
+    featureMean: fitted.mean,
+    featureScale: fitted.scale,
+    prototypes: fitted.prototypes,
+    zones: Object.fromEntries(
+      classes.map((label) => [label, coordinates.get(label) ?? { x: null, y: null }]),
+    ),
+    temperature: fitted.temperature,
+    confidenceThreshold: fitted.confidenceThreshold,
+    marginThreshold: fitted.marginThreshold,
+    distanceThreshold: fitted.distanceThreshold,
+    validation,
   };
   await mkdir(dirname(options.outPath), { recursive: true });
   await writeFile(options.outPath, `${JSON.stringify(bundle, null, 2)}\n`);
@@ -101,24 +132,78 @@ export async function trainDashboardModel(options: {
     bundle,
     summary: {
       path: options.outPath,
-      target: 'label',
+      target,
       classes,
-      recordings,
-      windows: featureRows.length,
+      recordings: new Set(examples.map((example) => example.recordingId)).size,
+      windows: examples.length,
       window: options.window,
       trainedAt: new Date().toISOString(),
+      validation,
     },
   };
 }
 
+function validateClassCoverage(classes: string[], target: 'label' | 'position'): void {
+  if (classes.length < 2) {
+    throw new Error(`need at least two recorded ${target} classes; found ${classes.join(', ')}`);
+  }
+  if (target !== 'position') return;
+  if (!classes.some((label) => /empty|clear/iu.test(label))) {
+    throw new Error('position training requires an empty-room class');
+  }
+  if (classes.filter((label) => !/empty|clear/iu.test(label)).length < 2) {
+    throw new Error('position training requires at least two occupied zones');
+  }
+}
+
+function classLabel(meta: RecordingMeta, target: 'label' | 'position'): string {
+  if (target === 'label') return String(meta.label ?? '').trim();
+  if (/empty|clear/iu.test(meta.label)) return 'empty';
+  return String(meta.position?.label ?? '').trim();
+}
+
+function coordinatesFor(
+  label: string,
+  meta: RecordingMeta,
+  geometry: RoomGeometry | undefined,
+  target: 'label' | 'position',
+): { x: number | null; y: number | null } {
+  if (target !== 'position' || /empty|clear/iu.test(label)) return { x: null, y: null };
+  const configured = geometry?.zones[label];
+  if (configured) return { x: configured.x, y: configured.y };
+  const x = meta.position?.x;
+  const y = meta.position?.y;
+  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+    throw new Error(`position ${label} is missing calibrated x/y coordinates`);
+  }
+  return { x: Number(x), y: Number(y) };
+}
+
+function mergeCoordinates(
+  coordinates: Map<string, { x: number | null; y: number | null }>,
+  label: string,
+  point: { x: number | null; y: number | null },
+): void {
+  const existing = coordinates.get(label);
+  if (
+    existing?.x !== null &&
+    existing?.y !== null &&
+    point.x !== null &&
+    point.y !== null &&
+    (Math.abs(existing.x - point.x) > 0.05 || Math.abs(existing.y - point.y) > 0.05)
+  ) {
+    throw new Error(`position ${label} has inconsistent coordinates across recordings`);
+  }
+  coordinates.set(label, point);
+}
+
 async function loadMetas(recordingsDir: string): Promise<RecordingMeta[]> {
   const names = await readdir(recordingsDir);
-  const metas = await Promise.all(
+  return Promise.all(
     names
       .filter((name) => name.endsWith('.meta.json'))
       .map(async (name) => JSON.parse(await readFile(join(recordingsDir, name), 'utf8'))),
-  );
-  return metas as RecordingMeta[];
+  ) as Promise<RecordingMeta[]>;
 }
 
 async function readAmplitudeFrames(path: string): Promise<Float64Array[]> {
@@ -157,20 +242,4 @@ function dominantWidth(frames: readonly Float64Array[]): Float64Array[] {
     }
   }
   return frames.filter((frame) => frame.length === width);
-}
-
-function columns(
-  rows: readonly number[][],
-  reduce: (values: number[], mean: number) => number,
-  means?: readonly number[],
-): number[] {
-  const width = rows[0]?.length ?? 0;
-  return Array.from({ length: width }, (_unused, column) => {
-    const values = rows.map((row) => row[column]!);
-    return reduce(values, means?.[column] ?? average(values));
-  });
-}
-
-function average(values: readonly number[]): number {
-  return values.length === 0 ? 0 : values.reduce((sum, value) => sum + value, 0) / values.length;
 }
