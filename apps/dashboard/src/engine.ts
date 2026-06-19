@@ -55,23 +55,25 @@ export class RealtimeEngine {
     }
     const metrics = this.input.metrics();
     const ageSec = latest ? Math.max(0, (nowMs - latest.receivedAtMs) / 1000) : null;
-    const active = this.latestResult.state === 'active';
+    const position = this.latestResult.position;
+    const bubbles =
+      position?.accepted && position.x !== null && position.y !== null
+        ? [
+            {
+              id: 'position-estimate',
+              x: position.x,
+              y: position.y,
+              radius: Number((0.08 + (1 - position.confidence) * 0.08).toFixed(4)),
+              confidence: position.confidence,
+              motion: this.latestResult.motion,
+              zone: position.zone,
+            },
+          ]
+        : [];
     return {
       timestamp: nowMs / 1000,
       ...this.latestResult,
-      bubbles: active
-        ? [
-            {
-              id: 'rf-disturbance',
-              x: 0.5,
-              y: 0.5,
-              radius: Number((0.08 + this.latestResult.confidence * 0.08).toFixed(4)),
-              confidence: this.latestResult.confidence,
-              motion: this.latestResult.motion,
-              zone: this.latestResult.zone,
-            },
-          ]
-        : [],
+      bubbles,
       amplitudeProfile: amplitudeProfile(frames.map((frame) => frame.amplitude)),
       frameRateHz: frameRate(frames),
       lossPpm: 0,
