@@ -1,4 +1,8 @@
-import type { ActivityDiagnostics, ActivityState } from './contracts.js';
+import type {
+  ActivityDiagnostics,
+  ActivityState,
+  PositionEstimate,
+} from './contracts.js';
 import { motionLevel, windowFeatures } from './features.js';
 import type { PortablePrototypeModel } from './model.js';
 
@@ -7,7 +11,9 @@ export interface ActivityResult {
   confidence: number;
   motion: number;
   zone: string | null;
+  position: PositionEstimate | null;
   mode: 'heuristic' | 'portable-model';
+  modelTarget?: 'presence' | 'label' | 'position';
   scores: Record<string, number>;
   diagnostics: ActivityDiagnostics;
 }
@@ -47,12 +53,29 @@ export class ActivityClassifier {
       );
       const clear = /empty|clear/iu.test(prediction.state);
       const activationScore = modelActivationScore(prediction.scores);
+      const zonePoint = prediction.zone ? this.model.bundle.zones[prediction.zone] : undefined;
+      const position: PositionEstimate | null =
+        this.model.bundle.target === 'position'
+          ? {
+              accepted: !clear && prediction.accepted && Boolean(zonePoint),
+              zone: !clear && prediction.accepted ? prediction.zone : null,
+              x: !clear && prediction.accepted ? (zonePoint?.x ?? null) : null,
+              y: !clear && prediction.accepted ? (zonePoint?.y ?? null) : null,
+              confidence: prediction.confidence,
+              margin: prediction.margin,
+              contributors: 1,
+              agreement: prediction.accepted ? 1 : 0,
+              reason: clear ? 'room classified as clear' : prediction.reason,
+            }
+          : null;
       return {
         state: clear ? 'clear' : 'active',
         confidence: prediction.confidence,
         motion,
-        zone: prediction.zone,
+        zone: position?.zone ?? null,
+        position,
         mode: 'portable-model',
+        modelTarget: this.model.bundle.target,
         scores: prediction.scores,
         diagnostics: this.diagnostics(activationScore, true),
       };
@@ -129,6 +152,7 @@ export class ActivityClassifier {
       confidence: clamp(confidence),
       motion,
       zone: null,
+      position: null,
       mode: 'heuristic',
       scores: state === 'baseline' ? { learning: confidence } : { active: score, clear: 1 - score },
       diagnostics: this.diagnostics(
