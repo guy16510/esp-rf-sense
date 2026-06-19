@@ -36,6 +36,7 @@ describe('live XY dashboard integration', () => {
   it('publishes accepted XY coordinates through the real dashboard API', async () => {
     const { engine, runtime, dashboard } = createXYDashboardRuntime(model, mappings, {
       port: 0,
+      intervalMs: 20,
       roomWidthMeters: 4,
       roomHeightMeters: 4,
     });
@@ -63,16 +64,21 @@ describe('live XY dashboard integration', () => {
 
       const address = dashboard.address();
       expect(address).not.toBeNull();
-      const response = await fetch(`http://127.0.0.1:${address!.port}/api/nodes`);
-      expect(response.ok).toBe(true);
-      const payload = await response.json() as {
+      let payload: {
         fused: {
           modelTarget?: string;
           position?: { accepted: boolean; x: number | null; y: number | null; contributors: number };
         };
-      };
-      expect(payload.fused.modelTarget).toBe('position');
-      expect(payload.fused.position).toMatchObject({
+      } | null = null;
+      for (let attempt = 0; attempt < 25; attempt += 1) {
+        const response = await fetch(`http://127.0.0.1:${address!.port}/api/nodes`);
+        expect(response.ok).toBe(true);
+        payload = await response.json() as typeof payload;
+        if (payload?.fused.position?.accepted) break;
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      expect(payload?.fused.modelTarget).toBe('position');
+      expect(payload?.fused.position).toMatchObject({
         accepted: true,
         x: 0.625,
         y: 0.375,
