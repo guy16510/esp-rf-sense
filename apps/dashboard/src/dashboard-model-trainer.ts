@@ -220,8 +220,9 @@ function mergeCoordinates(
 ): void {
   const existing = coordinates.get(label);
   if (
-    existing?.x !== null &&
-    existing?.y !== null &&
+    existing !== undefined &&
+    existing.x !== null &&
+    existing.y !== null &&
     point.x !== null &&
     point.y !== null &&
     (Math.abs(existing.x - point.x) > 0.05 || Math.abs(existing.y - point.y) > 0.05)
