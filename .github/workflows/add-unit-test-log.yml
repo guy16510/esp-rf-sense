@@ -1,0 +1,49 @@
+name: add-unit-test-log
+
+on:
+  push:
+    branches: [position-ready]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: position-ready
+      - name: Patch tools CI
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('.github/workflows/tools-ci.yml')
+          text = path.read_text()
+          old = '''      - name: Unit tests
+                run: npm test
+          '''
+          new = '''      - name: Unit tests
+                shell: bash
+                run: set -o pipefail && npm test 2>&1 | tee unit-tests.log
+
+              - name: Upload unit test diagnostics
+                if: always()
+                uses: actions/upload-artifact@v4
+                with:
+                  name: unit-test-diagnostics
+                  path: unit-tests.log
+                  if-no-files-found: ignore
+          '''
+          if old not in text:
+              raise SystemExit('unit test step not found')
+          path.write_text(text.replace(old, new, 1))
+          PY
+      - name: Commit patch
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add .github/workflows/tools-ci.yml
+          git commit -m "Preserve unit test diagnostics in CI"
+          git push origin HEAD:position-ready
