@@ -29,6 +29,15 @@ describe('four-node dashboard UI', () => {
     expect(page).toContain('Four-node RF control center');
     expect(page).toContain('id="nodeGrid"');
     expect(page).toContain('id="nodeCardTemplate"');
+    expect(page).toContain('id="roomSetupLaunch"');
+    expect(page).toContain('id="roomSetup"');
+    expect(page).toContain('GUIDED SETUP');
+    expect(page).toContain('Set up room');
+    expect(page).toContain('Record empty room');
+    expect(page).toContain('Record one stationary and one moving session');
+    expect(page).toContain("format:'rfsense-room-geometry/1'");
+    expect(page).toContain('REQUIRED_MATCHES');
+    expect(page).toContain("request('/api/model/train'");
     expect(page).not.toContain('ESP32-S3 telemetry');
 
     const cssResponse = await fetch(`http://127.0.0.1:${port}/four-node-dashboard.css`);
@@ -41,13 +50,6 @@ describe('four-node dashboard UI', () => {
     expect(script).toContain("import './dashboard-stream.js'");
     expect(script).toContain("import './four-node-dashboard-core.js'");
     expect(script).toContain("import './room-d3.js'");
-    expect(script).toContain('GUIDED SETUP');
-    expect(script).toContain('Set up room');
-    expect(script).toContain('Record empty room');
-    expect(script).toContain('record one stationary and one moving session');
-    expect(script).toContain("format: 'rfsense-room-geometry/1'");
-    expect(script).toContain('REQUIRED_VALIDATION_SNAPSHOTS');
-    expect(script).toContain("post('/api/model/train'");
 
     const streamResponse = await fetch(`http://127.0.0.1:${port}/dashboard-stream.js`);
     const stream = await streamResponse.text();
