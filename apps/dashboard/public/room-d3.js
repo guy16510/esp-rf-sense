@@ -153,9 +153,23 @@ function assignSlots(nodes, slotDeviceIds = []) {
   const assigned = new Map(slots.map((slot) => [slot, null]));
   const explicitIds = slotDeviceIds.map((id) => String(id || '').toLowerCase()).filter(Boolean);
   if (explicitIds.length > 0) {
+    const matched = new Set();
     for (const node of nodes) {
-      const index = explicitIds.indexOf(String(node.deviceId || '').toLowerCase());
-      if (index >= 0 && slots[index]) assigned.set(slots[index], node);
+      const id = String(node.deviceId || '').toLowerCase();
+      const index = explicitIds.indexOf(id);
+      if (index >= 0 && slots[index]) {
+        assigned.set(slots[index], node);
+        matched.add(id);
+      }
+    }
+    for (const node of nodes) {
+      const id = String(node.deviceId || '').toLowerCase();
+      if (matched.has(id)) continue;
+      const free = slots.find((slot) => !assigned.get(slot));
+      if (free) {
+        assigned.set(free, node);
+        matched.add(id);
+      }
     }
     return assigned;
   }

@@ -80,8 +80,11 @@ function allocateSlots(nodes, requiredCount, slotDeviceIds = []) {
     for (const node of nodes) {
       const id = String(node.deviceId || '').toLowerCase();
       if (assigned.has(id)) continue;
-      const free = slots.findIndex((_node, index) => !slots[index] && !explicitIds[index]);
-      if (free >= 0) slots[free] = node;
+      const free = slots.findIndex((candidate) => !candidate);
+      if (free >= 0) {
+        slots[free] = node;
+        assigned.add(id);
+      }
     }
     return slots;
   }
