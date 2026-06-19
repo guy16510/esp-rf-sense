@@ -1,8 +1,5 @@
 import './four-node-dashboard-core.js';
-
-void import('./room-d3.js').catch((error) => {
-  console.error('[position-ui] room visualization failed to load', error);
-});
+import './room-d3.js';
 
 const POSITION_PREFIX = 'rfsense-meta:';
 const positionState = {
