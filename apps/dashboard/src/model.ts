@@ -13,12 +13,10 @@ export class PortablePrototypeModel {
   constructor(readonly bundle: PortableModelBundle) {}
 
   predict(features: readonly number[]): ModelPrediction {
-    if (features.length !== this.bundle.nFeatures) {
-      throw new Error(
-        `feature mismatch: model expects ${this.bundle.nFeatures}, received ${features.length}`,
-      );
-    }
-    const normalized = features.map((value, index) => {
+    const aligned = Array.from({ length: this.bundle.nFeatures }, (_unused, index) =>
+      index < features.length ? features[index]! : (this.bundle.featureMean[index] ?? 0),
+    );
+    const normalized = aligned.map((value, index) => {
       const mean = this.bundle.featureMean[index] ?? 0;
       const scale = this.bundle.featureScale[index] ?? 1;
       return (value - mean) / (Math.abs(scale) > 1e-12 ? scale : 1);

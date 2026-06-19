@@ -1,4 +1,4 @@
-export type ActivityState = "waiting" | "baseline" | "clear" | "active";
+export type ActivityState = 'waiting' | 'baseline' | 'clear' | 'active';
 
 export interface ActivityBubble {
   id: string;
@@ -38,10 +38,10 @@ export interface DashboardState {
   frames: number;
   datagrams: number;
   invalidDatagrams: number;
-  mode: "heuristic" | "portable-model" | "fused";
+  mode: 'heuristic' | 'portable-model' | 'fused';
   scores: Record<string, number>;
   diagnostics: ActivityDiagnostics;
-  source?: "real" | "replay" | "simulated";
+  source?: 'real' | 'replay' | 'simulated';
   name?: string;
   expected?: boolean;
   averageRssi?: number | null;
@@ -56,7 +56,7 @@ export interface DashboardState {
 
 export interface CampaignMarker {
   id: number;
-  type: "campaign_start" | "campaign_end" | "interaction" | "note";
+  type: 'campaign_start' | 'campaign_end' | 'interaction' | 'note';
   label: string;
   campaignId: string;
   timestamp: number;
@@ -78,8 +78,8 @@ export interface DeviceTelemetry {
 }
 
 export interface PortableModelBundle {
-  format: "rfsense-portable-model/1";
-  target: "presence" | "label" | "position";
+  format: 'rfsense-portable-model/1';
+  target: 'presence' | 'label' | 'position';
   window: number;
   nFeatures: number;
   classes: string[];

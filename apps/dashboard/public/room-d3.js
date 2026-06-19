@@ -9,6 +9,7 @@ const positions = {
 
 let d3;
 let latest = null;
+let smoothedRegion = null;
 const slotAssignments = new Map();
 const history = [];
 
@@ -128,7 +129,7 @@ function render(snapshot) {
   latest = snapshot;
   const nodes = Array.isArray(snapshot.nodes) ? snapshot.nodes : [];
   const fused = snapshot.fused || {};
-  const assigned = assignSlots(nodes);
+  const assigned = assignSlots(nodes, snapshot.slotDeviceIds || []);
   const nodeData = slots.map((slot) => ({
     slot,
     node: assigned.get(slot),
@@ -138,8 +139,9 @@ function render(snapshot) {
 
   drawLinks(nodeData);
   drawNodes(nodeData);
-  drawRegions(nodeData, fused);
-  ui.roomState.textContent = stateLabel(fused.state);
+  const region = estimateRegion(nodeData, fused);
+  drawRegions(region);
+  ui.roomState.textContent = region ? 'RF movement detected' : stateLabel(fused.state);
   ui.mode.textContent = nodes.some((node) => node.mode === 'portable-model')
     ? 'Trained model'
     : 'Heuristic estimate';
@@ -147,8 +149,17 @@ function render(snapshot) {
   if (history.length > 120) history.shift();
 }
 
-function assignSlots(nodes) {
+function assignSlots(nodes, slotDeviceIds = []) {
   const assigned = new Map(slots.map((slot) => [slot, null]));
+  const explicitIds = slotDeviceIds.map((id) => String(id || '').toLowerCase()).filter(Boolean);
+  if (explicitIds.length > 0) {
+    for (const node of nodes) {
+      const index = explicitIds.indexOf(String(node.deviceId || '').toLowerCase());
+      if (index >= 0 && slots[index]) assigned.set(slots[index], node);
+    }
+    return assigned;
+  }
+
   for (const node of nodes) {
     const id = String(node.deviceId || 'unknown');
     if (!slotAssignments.has(id)) {
@@ -195,10 +206,9 @@ function drawNodes(nodeData) {
   groups.select('text').text((item) => item.slot);
 }
 
-function drawRegions(nodeData, fused) {
-  const contributors = nodeData.filter((item) => isReady(item.node));
-  const active = fused.state === 'active' && contributors.length > 0;
-  const regionData = active ? [estimateRegion(contributors, fused)] : [];
+function drawRegions(region) {
+  if (!region) smoothedRegion = null;
+  const regionData = region ? [smoothRegion(region)] : [];
   const groups = ui.regions
     .selectAll('g.rf-region')
     .data(regionData, (item) => item.id)
@@ -221,9 +231,15 @@ function drawRegions(nodeData, fused) {
   groups.select('.rf-region-halo').transition().duration(240).attr('r', (item) => item.radius * 1.7);
 }
 
-function estimateRegion(contributors, fused) {
+function estimateRegion(nodeData, fused) {
+  if (fused.state !== 'active') return null;
+  const contributors = nodeData
+    .map((item) => ({ ...item, evidence: nodeEvidence(item.node) }))
+    .filter((item) => isReady(item.node) && item.evidence > 0.12);
+  if (contributors.length === 0) return null;
+
   const weighted = contributors.map((item) => {
-    const activation = Math.max(0.03, finite(item.node?.diagnostics?.activationScore));
+    const activation = Math.max(0.03, item.evidence);
     const age = finite(item.node?.ageSec, 99);
     const quality = Math.max(0.05, 1 - Math.min(3, age) / 3);
     return { ...item, weight: activation * quality };
@@ -231,13 +247,34 @@ function estimateRegion(contributors, fused) {
   const total = weighted.reduce((sum, item) => sum + item.weight, 0) || 1;
   const rawX = weighted.reduce((sum, item) => sum + item.x * item.weight, 0) / total;
   const rawY = weighted.reduce((sum, item) => sum + item.y * item.weight, 0) / total;
-  const confidence = clamp(fused.confidence);
+  const confidence = clamp(Math.max(fused.confidence || 0, ...contributors.map((item) => item.evidence)));
   return {
     id: 'fused-presence-region',
     x: rawX * 0.62 + 0.5 * 0.38,
     y: rawY * 0.62 + 0.5 * 0.38,
     radius: 44 + (1 - confidence) * 46 + Math.min(28, finite(fused.motion) * 5),
   };
+}
+
+function nodeEvidence(node) {
+  if (!node) return 0;
+  if (node.state !== 'active') return 0;
+  return Math.max(clamp(node.diagnostics?.activationScore), clamp(node.confidence));
+}
+
+function smoothRegion(region) {
+  if (!smoothedRegion) {
+    smoothedRegion = { ...region };
+    return smoothedRegion;
+  }
+  const alpha = 0.22;
+  smoothedRegion = {
+    ...region,
+    x: smoothedRegion.x + (region.x - smoothedRegion.x) * alpha,
+    y: smoothedRegion.y + (region.y - smoothedRegion.y) * alpha,
+    radius: smoothedRegion.radius + (region.radius - smoothedRegion.radius) * 0.3,
+  };
+  return smoothedRegion;
 }
 
 function isReady(node) {

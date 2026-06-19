@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark" />
     <title>RF-Sense four-node control center</title>
-    <link rel="stylesheet" href="/four-node-dashboard.css?v=1" />
+    <link rel="stylesheet" href="/four-node-dashboard.css?v=2" />
   </head>
   <body>
     <header class="topbar">
@@ -133,6 +133,24 @@
         <article class="panel operations-panel">
           <div class="panel-heading">
             <div>
+              <span class="eyebrow">MODEL</span>
+              <h2>Label classifier</h2>
+            </div>
+            <span id="modelBadge" class="badge neutral">Not loaded</span>
+          </div>
+          <div class="operation-body">
+            <div class="button-row">
+              <button id="trainModelButton" type="button">Train from recordings</button>
+              <button id="loadModelButton" type="button">Load latest model</button>
+            </div>
+            <p id="modelStatus" class="muted">Train a label model from saved empty, moving, and stationary recordings.</p>
+            <div id="modelLabels" class="label-list"></div>
+          </div>
+        </article>
+
+        <article class="panel operations-panel">
+          <div class="panel-heading">
+            <div>
               <span class="eyebrow">SYSTEM STATUS</span>
               <h2>Readiness and limits</h2>
             </div>
@@ -201,6 +219,6 @@
       </article>
     </template>
 
-    <script type="module" src="/four-node-dashboard.js?v=2"></script>
+    <script type="module" src="/four-node-dashboard.js?v=3"></script>
   </body>
 </html>

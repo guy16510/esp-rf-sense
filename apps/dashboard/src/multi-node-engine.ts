@@ -1,4 +1,5 @@
 import type { DashboardState } from './contracts.js';
+import type { PortablePrototypeModel } from './model.js';
 import { RealtimeEngine, type EngineOptions } from './engine.js';
 import type { CsiDatagram } from './protocol.js';
 
@@ -38,8 +39,11 @@ interface NodeRuntime {
 export class MultiNodeEngine {
   private readonly runtimes = new Map<number, NodeRuntime>();
   private invalidDatagrams = 0;
+  private model: PortablePrototypeModel | undefined;
 
-  constructor(private readonly options: MultiNodeOptions = {}) {}
+  constructor(private readonly options: MultiNodeOptions = {}) {
+    this.model = options.model;
+  }
 
   accept(datagram: CsiDatagram, receivedAtMs: number): void {
     const id = datagram.header.deviceId >>> 0;
@@ -53,7 +57,7 @@ export class MultiNodeEngine {
           ...(this.options.motionThreshold === undefined
             ? {}
             : { motionThreshold: this.options.motionThreshold }),
-          ...(this.options.model === undefined ? {} : { model: this.options.model }),
+          ...(this.model === undefined ? {} : { model: this.model }),
         }),
         deviceId: id,
         bootId: datagram.header.bootId >>> 0,
@@ -92,6 +96,11 @@ export class MultiNodeEngine {
       return;
     }
     for (const runtime of this.runtimes.values()) runtime.engine.resetBaseline();
+  }
+
+  setModel(model?: PortablePrototypeModel): void {
+    this.model = model;
+    for (const runtime of this.runtimes.values()) runtime.engine.setModel(model);
   }
 
   snapshot(nowMs = Date.now()): MultiNodeSnapshot {
@@ -135,8 +144,12 @@ export class MultiNodeEngine {
     if (base.ageSec !== null && base.ageSec > (this.options.staleAfterMs ?? 3000) / 1000)
       reasons.push(`last frame ${base.ageSec.toFixed(1)}s ago`);
     if (!base.diagnostics.baselineReady) reasons.push('empty-room baseline is not ready');
-    if (base.frameRateHz < (this.options.minFrameRateHz ?? 5))
-      reasons.push(`frame rate ${base.frameRateHz.toFixed(1)} Hz is below minimum`);
+    if (this.options.minFrameRateHz !== undefined && base.frameRateHz < this.options.minFrameRateHz)
+      reasons.push(
+        `frame rate ${base.frameRateHz.toFixed(1)} Hz is below ${this.options.minFrameRateHz.toFixed(
+          1,
+        )} Hz`,
+      );
     if (lossPpm > (this.options.maxLossPpm ?? 100_000))
       reasons.push(`packet loss ${lossPpm} ppm exceeds maximum`);
     if (runtime.csiLength <= 0) reasons.push('CSI payload is empty');

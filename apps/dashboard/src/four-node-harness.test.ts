@@ -30,7 +30,7 @@ describe('four-node engine-to-web harness', () => {
             sequence * 50_000,
             sequence % 2 === 0 ? 4 : 20,
           ),
-          Date.now(),
+          Date.now() + sequence * 50,
         );
       }
     }
@@ -75,6 +75,63 @@ describe('four-node engine-to-web harness', () => {
     expect(stale.readiness.readyForCapture).toBe(false);
     expect(stale.fused.amplitudeProfile).toEqual([12, 13, 14, 15]);
   });
+
+  it('uses collector receive cadence for node readiness', () => {
+    const engine = new MultiNodeEngine({
+      requiredNodeCount: 1,
+      minFrameRateHz: 5,
+      staleAfterMs: 3000,
+      motionThreshold: 0.01,
+    });
+    const now = Date.now();
+    for (let sequence = 0; sequence < 64; sequence++) {
+      engine.accept(
+        datagram(101, 1001, sequence, sequence, sequence * 500_000, sequence % 2 === 0 ? 4 : 20),
+        now + sequence * 50,
+      );
+    }
+
+    const [node] = engine.snapshot(now + 64 * 50).nodes;
+    expect(node?.frameRateHz).toBeGreaterThan(5);
+    expect(node?.ready).toBe(true);
+  });
+
+  it('marks under-rate nodes as not ready when a minimum frame rate is configured', () => {
+    const engine = new MultiNodeEngine({
+      requiredNodeCount: 1,
+      minFrameRateHz: 5,
+      staleAfterMs: 3000,
+      motionThreshold: 0.01,
+    });
+    const now = Date.now();
+    engine.accept(datagram(101, 1001, 0, 0, 0, 12), now);
+    engine.accept(datagram(101, 1001, 1, 1, 1_000_000, 20), now + 1000);
+
+    const [node] = engine.snapshot(now + 1100).nodes;
+    expect(node?.frameRateHz).toBeLessThan(5);
+    expect(node?.ready).toBe(false);
+    expect(node?.readinessReasons?.join(' ')).toMatch(/frame rate/u);
+  });
+
+  it('resyncs a node when the CSI width changes', () => {
+    const engine = new MultiNodeEngine({
+      requiredNodeCount: 1,
+      staleAfterMs: 3000,
+      motionThreshold: 0.01,
+    });
+    const now = Date.now();
+    for (let sequence = 0; sequence < 64; sequence++) {
+      engine.accept(datagram(101, 1001, sequence, sequence, sequence * 50_000, 12, 8), now - 5000);
+    }
+    engine.accept(datagram(101, 1001, 64, 64, 3_200_000, 20, 12), now);
+    engine.accept(datagram(101, 1001, 65, 65, 3_250_000, 24, 12), now + 50);
+
+    const [node] = engine.snapshot(now + 100).nodes;
+    expect(node?.ageSec).toBeLessThan(1);
+    expect(node?.subcarrierCount).toBe(6);
+    expect(node?.frames).toBe(2);
+    expect(node?.ready).toBe(true);
+  });
 });
 
 function delay(milliseconds: number): Promise<void> {
@@ -88,7 +145,13 @@ function datagram(
   frameSequence: number,
   timestampUs: number,
   amplitude: number,
+  csiByteLength = 8,
 ): CsiDatagram {
+  const csi = Buffer.alloc(csiByteLength);
+  for (let index = 0; index < csi.length; index += 2) {
+    csi[index] = amplitude + index / 2;
+    csi[index + 1] = 0;
+  }
   return {
     header: {
       flags: 0,
@@ -103,7 +166,7 @@ function datagram(
         timestampUs,
         rssi: -45,
         firstWordInvalid: 0,
-        csi: Buffer.from([amplitude, 0, amplitude + 1, 0, amplitude + 2, 0, amplitude + 3, 0]),
+        csi,
       },
     ],
   };

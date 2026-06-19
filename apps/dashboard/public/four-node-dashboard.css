@@ -541,6 +541,22 @@ code {
   border-color: rgba(85, 229, 159, 0.34);
   background: rgba(85, 229, 159, 0.055);
 }
+.label-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+.model-label {
+  padding: 5px 8px;
+  border: 1px solid rgba(56, 215, 255, 0.28);
+  border-radius: 999px;
+  color: var(--cyan);
+  background: rgba(56, 215, 255, 0.055);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
 .empty-chart-label {
   fill: var(--muted);
   font-size: 13px;

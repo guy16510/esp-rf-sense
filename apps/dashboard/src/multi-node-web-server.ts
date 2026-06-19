@@ -3,7 +3,9 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { fileURLToPath } from 'node:url';
 
 import type { DashboardState } from './contracts.js';
+import { trainDashboardModel } from './dashboard-model-trainer.js';
 import type { DashboardRecorder } from './dashboard-recorder.js';
+import { loadPortableModel } from './model.js';
 import type { MultiNodeEngine, MultiNodeSnapshot } from './multi-node-engine.js';
 
 const APP_PUBLIC_ROOT = fileURLToPath(new URL('../public/', import.meta.url));
@@ -26,6 +28,21 @@ export interface MultiNodeServerOptions {
   port: number;
   intervalMs: number;
   recorder?: DashboardRecorder;
+  recordingsDir: string;
+  modelPath: string;
+  model?: ModelStatus;
+  slotDeviceIds?: string[];
+}
+
+interface ModelStatus {
+  loaded: boolean;
+  path: string | null;
+  target: string | null;
+  classes: string[];
+  trainedAt: string | null;
+  recordings: number | null;
+  windows: number | null;
+  error: string | null;
 }
 
 export class MultiNodeDashboardServer {
@@ -34,12 +51,23 @@ export class MultiNodeDashboardServer {
   private readonly history: DashboardState[] = [];
   private timer: NodeJS.Timeout | null = null;
   private state: MultiNodeSnapshot;
+  private modelStatus: ModelStatus;
 
   constructor(
     private readonly engine: MultiNodeEngine,
     private readonly options: MultiNodeServerOptions,
   ) {
     this.state = engine.snapshot();
+    this.modelStatus = options.model ?? {
+      loaded: false,
+      path: null,
+      target: null,
+      classes: [],
+      trainedAt: null,
+      recordings: null,
+      windows: null,
+      error: null,
+    };
     this.server = createServer((request, response) => void this.handle(request, response));
   }
 
@@ -93,7 +121,7 @@ export class MultiNodeDashboardServer {
       if (request.method === 'GET' && url.pathname === '/api/state')
         return void this.sendJson(response, 200, this.state.fused);
       if (request.method === 'GET' && url.pathname === '/api/nodes')
-        return void this.sendJson(response, 200, this.state);
+        return void this.sendJson(response, 200, this.withSlots(this.state));
       if (request.method === 'GET' && url.pathname === '/api/readiness')
         return void this.sendJson(response, 200, this.state.readiness);
       if (request.method === 'GET' && url.pathname === '/api/device')
@@ -123,12 +151,14 @@ export class MultiNodeDashboardServer {
       if (request.method === 'GET' && url.pathname === '/api/meta')
         return void this.sendJson(response, 200, {
           streamIntervalMs: this.options.intervalMs,
-          target: 'presence',
+          slotDeviceIds: this.options.slotDeviceIds ?? [],
+          target: this.modelStatus.loaded ? this.modelStatus.target : 'presence',
           zones: {},
           capabilities: {
             rfDisturbance: true,
             multiNode: true,
             fusedRfActivity: true,
+            trainedLabels: this.modelStatus.loaded,
             peopleCount: false,
             pose: false,
             orientation: false,
@@ -144,6 +174,50 @@ export class MultiNodeDashboardServer {
         return void this.sendJson(response, 201, await this.readBody(request));
       if (request.method === 'GET' && url.pathname === '/api/recording')
         return void this.sendJson(response, 200, this.recordingStatus());
+      if (request.method === 'GET' && url.pathname === '/api/model')
+        return void this.sendJson(response, 200, this.modelStatus);
+      if (request.method === 'POST' && url.pathname === '/api/model/train') {
+        const body = await this.readBody(request);
+        const outPath = String(body.path || this.options.modelPath);
+        const trained = await trainDashboardModel({
+          recordingsDir: this.options.recordingsDir,
+          outPath,
+          window: Math.max(8, Number(body.window ?? 64)),
+          step: Math.max(1, Number(body.step ?? 32)),
+        });
+        const loaded = await loadPortableModel(outPath);
+        this.engine.setModel(loaded);
+        this.modelStatus = {
+          loaded: true,
+          path: outPath,
+          target: trained.summary.target,
+          classes: trained.summary.classes,
+          trainedAt: trained.summary.trainedAt,
+          recordings: trained.summary.recordings,
+          windows: trained.summary.windows,
+          error: null,
+        };
+        this.broadcast('model', this.modelStatus);
+        return void this.sendJson(response, 201, this.modelStatus);
+      }
+      if (request.method === 'POST' && url.pathname === '/api/model/load') {
+        const body = await this.readBody(request);
+        const path = String(body.path || this.options.modelPath);
+        const loaded = await loadPortableModel(path);
+        this.engine.setModel(loaded);
+        this.modelStatus = {
+          loaded: true,
+          path,
+          target: loaded.bundle.target,
+          classes: loaded.bundle.classes,
+          trainedAt: null,
+          recordings: null,
+          windows: null,
+          error: null,
+        };
+        this.broadcast('model', this.modelStatus);
+        return void this.sendJson(response, 200, this.modelStatus);
+      }
       if (request.method === 'POST' && url.pathname === '/api/recording/start') {
         if (!this.state.readiness.readyForCapture)
           throw new Error(`capture blocked: ${this.state.readiness.reasons.join('; ')}`);
@@ -189,18 +263,25 @@ export class MultiNodeDashboardServer {
       'X-Accel-Buffering': 'no',
     });
     response.write(`event: state\ndata: ${JSON.stringify(this.state.fused)}\n\n`);
-    response.write(`event: nodes\ndata: ${JSON.stringify(this.state)}\n\n`);
+    response.write(`event: nodes\ndata: ${JSON.stringify(this.withSlots(this.state))}\n\n`);
     response.write(
       `event: device\ndata: ${JSON.stringify({ connected: false, error: 'four-node RF stream mode' })}\n\n`,
     );
     response.write(`event: recording\ndata: ${JSON.stringify(this.recordingStatus())}\n\n`);
+    response.write(`event: model\ndata: ${JSON.stringify(this.modelStatus)}\n\n`);
     this.clients.add(response);
     response.on('close', () => this.clients.delete(response));
   }
 
   private broadcast(event: string, value: unknown): void {
-    const payload = JSON.stringify(value);
+    const payload = JSON.stringify(event === 'nodes' ? this.withSlots(value) : value);
     for (const client of this.clients) client.write(`event: ${event}\ndata: ${payload}\n\n`);
+  }
+
+  private withSlots(value: unknown): unknown {
+    if (!this.options.slotDeviceIds || this.options.slotDeviceIds.length === 0) return value;
+    if (typeof value !== 'object' || value === null) return value;
+    return { ...value, slotDeviceIds: this.options.slotDeviceIds };
   }
 
   private recordingStatus(): unknown {
@@ -234,7 +315,8 @@ export class MultiNodeDashboardServer {
     response.writeHead(200, {
       'Content-Type': contentType,
       'Content-Length': content.length,
-      'Cache-Control': name.endsWith('.html') ? 'no-store' : 'public, max-age=300',
+      'Cache-Control':
+        name.endsWith('.html') || name.endsWith('.js') ? 'no-store' : 'public, max-age=300',
     });
     response.end(content);
   }

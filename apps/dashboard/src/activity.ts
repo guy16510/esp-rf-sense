@@ -15,6 +15,7 @@ export interface ActivityResult {
 const REQUIRED = 20;
 
 export class ActivityClassifier {
+  private model: PortablePrototypeModel | undefined;
   private mean: number | null = null;
   private variance = 0;
   private samples = 0;
@@ -23,9 +24,18 @@ export class ActivityClassifier {
   private active = false;
 
   constructor(
-    private readonly model?: PortablePrototypeModel,
+    model?: PortablePrototypeModel,
     private readonly threshold?: number,
-  ) {}
+  ) {
+    this.model = model;
+  }
+
+  setModel(model?: PortablePrototypeModel): void {
+    this.model = model;
+    this.activeVotes = 0;
+    this.clearVotes = 0;
+    this.active = false;
+  }
 
   evaluate(frames: readonly Float64Array[]): ActivityResult {
     const motion = motionLevel(frames);
@@ -36,6 +46,7 @@ export class ActivityClassifier {
         windowFeatures(frames.slice(-this.model.bundle.window)),
       );
       const clear = /empty|clear/iu.test(prediction.state);
+      const activationScore = modelActivationScore(prediction.scores);
       return {
         state: clear ? 'clear' : 'active',
         confidence: prediction.confidence,
@@ -43,7 +54,7 @@ export class ActivityClassifier {
         zone: prediction.zone,
         mode: 'portable-model',
         scores: prediction.scores,
-        diagnostics: this.diagnostics(1, true),
+        diagnostics: this.diagnostics(activationScore, true),
       };
     }
 
@@ -144,4 +155,13 @@ export class ActivityClassifier {
 
 function clamp(value: number): number {
   return Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0));
+}
+
+function modelActivationScore(scores: Record<string, number>): number {
+  const entries = Object.entries(scores);
+  if (entries.length === 0) return 0;
+  const active = entries
+    .filter(([label]) => !/empty|clear/iu.test(label))
+    .reduce((sum, [, value]) => sum + value, 0);
+  return clamp(active);
 }

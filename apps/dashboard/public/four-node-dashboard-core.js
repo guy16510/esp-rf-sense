@@ -5,6 +5,7 @@ const history = [];
 
 let latestSnapshot = null;
 let latestRecording = null;
+let latestModel = null;
 let streamConnected = false;
 let lastStreamEventAt = 0;
 
@@ -37,6 +38,14 @@ function labelState(state) {
   );
 }
 
+function predictedLabel(node) {
+  const scores = node?.scores || {};
+  const entries = Object.entries(scores).filter(([, value]) => finite(value));
+  if (entries.length === 0) return null;
+  entries.sort((left, right) => number(right[1]) - number(left[1]));
+  return entries[0][0];
+}
+
 function stateDetail(state) {
   if (state === 'active') return 'One or more ready links detect meaningful RF disturbance.';
   if (state === 'clear') return 'Ready links agree that the RF paths are clear.';
@@ -53,9 +62,30 @@ function classifyNode(node) {
   return { level: 'ready', label: 'Ready' };
 }
 
-function allocateSlots(nodes, requiredCount) {
-  const count = Math.max(4, requiredCount || 4);
+function allocateSlots(nodes, requiredCount, slotDeviceIds = []) {
+  const explicitIds = slotDeviceIds.map((id) => String(id || '').toLowerCase()).filter(Boolean);
+  const count = Math.max(4, requiredCount || 4, explicitIds.length);
   const slots = Array(count).fill(null);
+  const assigned = new Set();
+
+  if (explicitIds.length > 0) {
+    for (const node of nodes) {
+      const id = String(node.deviceId || '').toLowerCase();
+      const slot = explicitIds.indexOf(id);
+      if (slot >= 0 && slot < count) {
+        slots[slot] = node;
+        assigned.add(id);
+      }
+    }
+    for (const node of nodes) {
+      const id = String(node.deviceId || '').toLowerCase();
+      if (assigned.has(id)) continue;
+      const free = slots.findIndex((_node, index) => !slots[index] && !explicitIds[index]);
+      if (free >= 0) slots[free] = node;
+    }
+    return slots;
+  }
+
   for (const node of nodes) {
     const id = String(node.deviceId || 'unknown');
     if (!slotAssignments.has(id)) {
@@ -101,16 +131,17 @@ function renderSnapshot(snapshot) {
   get('contributors').textContent = `${(fused.contributingNodes || []).length} contributors`;
   get('subcarrierCount').textContent = `${(fused.amplitudeProfile || []).length} subcarriers`;
 
-  renderNodeGrid(allocateSlots(nodes, required));
+  renderNodeGrid(allocateSlots(nodes, required, snapshot?.slotDeviceIds || []), snapshot?.slotDeviceIds || []);
   drawProfile(get('fusedProfile'), fused.amplitudeProfile || [], true);
   renderReadiness(snapshot);
   updateRecordingControls();
 }
 
-function renderNodeGrid(slots) {
+function renderNodeGrid(slots, slotDeviceIds = []) {
   const root = get('nodeGrid');
   root.replaceChildren();
   slots.slice(0, 4).forEach((node, index) => {
+    const expectedDeviceId = slotDeviceIds[index];
     const fragment = template.content.cloneNode(true);
     const card = fragment.querySelector('.node-card');
     const status = classifyNode(node);
@@ -122,7 +153,9 @@ function renderNodeGrid(slots) {
     fragment.querySelector('.node-badge').textContent = status.label;
 
     if (!node) {
-      fragment.querySelector('.node-id').textContent = 'No device discovered';
+      fragment.querySelector('.node-id').textContent = expectedDeviceId
+        ? `Expected device ${expectedDeviceId}`
+        : 'No device discovered';
       fragment.querySelector('.node-state').textContent = 'Missing';
       fragment.querySelector('.node-age').textContent = 'Waiting for UDP datagrams';
       fragment.querySelector('.node-rate').textContent = '0.0 Hz';
@@ -142,7 +175,9 @@ function renderNodeGrid(slots) {
         fragment.querySelector(selector).textContent = '0';
       }
       fragment.querySelector('.node-reasons').textContent =
-        'This slot has not received a node stream.';
+        expectedDeviceId
+          ? 'This hard-coded slot has not received its expected node stream.'
+          : 'This slot has not received a node stream.';
       fragment.querySelector('.node-boot').textContent = 'Boot ID —';
       fragment.querySelector('.node-reset-button').disabled = true;
       drawProfile(fragment.querySelector('.node-profile'), [], false);
@@ -152,7 +187,8 @@ function renderNodeGrid(slots) {
 
     const diagnostics = node.diagnostics || {};
     fragment.querySelector('.node-id').textContent = `Device ${node.deviceId}`;
-    fragment.querySelector('.node-state').textContent = labelState(node.state);
+    fragment.querySelector('.node-state').textContent =
+      node.mode === 'portable-model' ? predictedLabel(node) || labelState(node.state) : labelState(node.state);
     fragment.querySelector('.node-age').textContent = finite(node.ageSec)
       ? `Updated ${number(node.ageSec).toFixed(2)}s ago`
       : 'No recent frame';
@@ -243,6 +279,33 @@ function renderRecording(recording) {
   updateRecordingControls();
 }
 
+function renderModel(model) {
+  latestModel = model || {};
+  const badge = get('modelBadge');
+  const status = get('modelStatus');
+  const labels = get('modelLabels');
+  labels.replaceChildren();
+
+  if (latestModel.loaded) {
+    badge.className = 'badge ready';
+    badge.textContent = 'Loaded';
+    const classes = Array.isArray(latestModel.classes) ? latestModel.classes : [];
+    status.textContent = `Loaded ${latestModel.target || 'label'} model from ${latestModel.path || 'saved model'}${latestModel.windows ? ` using ${integer(latestModel.windows)} windows` : ''}.`;
+    for (const label of classes) {
+      const chip = document.createElement('span');
+      chip.className = 'model-label';
+      chip.textContent = label;
+      labels.append(chip);
+    }
+  } else {
+    badge.className = latestModel.error ? 'badge issue' : 'badge neutral';
+    badge.textContent = latestModel.error ? 'Error' : 'Not loaded';
+    status.textContent =
+      latestModel.error ||
+      'Train a label model from saved empty, moving, and stationary recordings.';
+  }
+}
+
 function updateRecordingControls() {
   const ready = Boolean(latestSnapshot?.readiness?.readyForCapture);
   const active = Boolean(latestRecording?.active);
@@ -278,6 +341,40 @@ async function stopRecording() {
   } catch (error) {
     get('recordingStatus').textContent = error.message;
     updateRecordingControls();
+  }
+}
+
+async function trainModel() {
+  const button = get('trainModelButton');
+  button.disabled = true;
+  get('loadModelButton').disabled = true;
+  get('modelStatus').textContent = 'Training label model from saved recordings...';
+  try {
+    renderModel(
+      await json('/api/model/train', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target: 'label', window: 64, step: 32 }),
+      }),
+    );
+  } catch (error) {
+    renderModel({ loaded: false, error: error.message, classes: [] });
+  } finally {
+    button.disabled = false;
+    get('loadModelButton').disabled = false;
+  }
+}
+
+async function loadModel() {
+  const button = get('loadModelButton');
+  button.disabled = true;
+  get('modelStatus').textContent = 'Loading latest model...';
+  try {
+    renderModel(await json('/api/model/load', { method: 'POST' }));
+  } catch (error) {
+    renderModel({ loaded: false, error: error.message, classes: [] });
+  } finally {
+    button.disabled = false;
   }
 }
 
@@ -417,17 +514,19 @@ function updateStreamStatus() {
 }
 
 async function boot() {
-  const [meta, snapshot, historical, recording] = await Promise.all([
+  const [meta, snapshot, historical, recording, model] = await Promise.all([
     json('/api/meta'),
     json('/api/nodes'),
     optionalJson('/api/history?seconds=120'),
     optionalJson('/api/recording'),
+    optionalJson('/api/model'),
   ]);
   renderCapabilities(meta.capabilities);
   get('systemCaveat').textContent = meta.disclaimer;
   for (const item of historical || []) addHistory(item);
   renderSnapshot(snapshot);
   renderRecording(recording || {});
+  renderModel(model || {});
 
   document.querySelectorAll('[data-recording-label]').forEach((button) => {
     button.addEventListener(
@@ -436,6 +535,8 @@ async function boot() {
     );
   });
   get('stopRecordingButton').addEventListener('click', () => void stopRecording());
+  get('trainModelButton').addEventListener('click', () => void trainModel());
+  get('loadModelButton').addEventListener('click', () => void loadModel());
   get('resetAllButton').addEventListener(
     'click',
     () => void resetBaseline(null, get('resetAllButton')),
@@ -452,6 +553,7 @@ async function boot() {
   });
   stream.addEventListener('nodes', (event) => renderSnapshot(JSON.parse(event.data)));
   stream.addEventListener('recording', (event) => renderRecording(JSON.parse(event.data)));
+  stream.addEventListener('model', (event) => renderModel(JSON.parse(event.data)));
   stream.onerror = () => {
     streamConnected = false;
     updateStreamStatus();

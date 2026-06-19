@@ -29,7 +29,10 @@ export class InputBuffer {
       const amplitude = decodeAmplitude(frame);
       if (amplitude.length === 0) continue;
       if (this.subcarrierCount === 0) this.subcarrierCount = amplitude.length;
-      if (amplitude.length !== this.subcarrierCount) continue;
+      if (amplitude.length !== this.subcarrierCount) {
+        this.frames.clear();
+        this.subcarrierCount = amplitude.length;
+      }
       this.frames.push({
         key: `${datagram.header.bootId}:${frame.frameSeq}`,
         timestampUs: frame.timestampUs,

@@ -8,6 +8,7 @@
     "src/activity.ts",
     "src/cli.ts",
     "src/contracts.ts",
+    "src/dashboard-model-trainer.ts",
     "src/dashboard-recorder.ts",
     "src/engine.ts",
     "src/events.ts",

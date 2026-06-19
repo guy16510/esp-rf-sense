@@ -10,7 +10,6 @@ const outDir = resolve(root, 'build', 'configured-flash');
 const cfgBlobPath = resolve(outDir, 'cfg.v1.bin');
 const nvsCsvPath = resolve(outDir, 'nvs.csv');
 const nvsBinPath = resolve(outDir, 'nvs.bin');
-const bootstrapBin = resolve(root, 'dist', 'bootstrap', 'rf-sense-bootstrap-combined.bin');
 const nvsGen = resolve(
   process.env.IDF_PATH ?? '/Users/admin/esp/esp-idf',
   'components',
@@ -62,26 +61,26 @@ writeFileSync(
 
 run(python, [nvsGen, 'generate', nvsCsvPath, nvsBinPath, '0x6000']);
 
-const port = resolvePort(env.ESP_PORT);
+const target = resolveFlashTarget(env.ESP_PORT);
 const erase = (env.ESP_ERASE ?? '1') !== '0';
 const flashBootstrapArgs = [
   '-m',
   'esptool',
   '--chip',
-  'esp32s3',
+  target.esptoolChip,
   '--port',
-  port,
+  target.port,
   'write_flash',
   '0x0',
-  bootstrapBin,
+  target.bootstrapBin,
 ];
 const flashNvsArgs = [
   '-m',
   'esptool',
   '--chip',
-  'esp32s3',
+  target.esptoolChip,
   '--port',
-  port,
+  target.port,
   'write_flash',
   '0x9000',
   nvsBinPath,
@@ -90,27 +89,29 @@ const flashNvsArgs = [
 console.error(`[flash-configured] SSID=${config.wifiSsid}`);
 console.error(`[flash-configured] collector=${config.collectorHost}:${config.collectorPort}`);
 console.error(`[flash-configured] deviceName=${config.deviceName}`);
-console.error(`[flash-configured] port=${port}`);
+console.error(`[flash-configured] chip=${target.detectedChip} image=${target.bundleName}`);
+console.error(`[flash-configured] port=${target.port}`);
 console.error(`[flash-configured] generated ${nvsBinPath}`);
 
-if (!existsSync(bootstrapBin)) {
-  throw new Error(`missing ${bootstrapBin}; build dist/bootstrap first`);
+if (!existsSync(target.bootstrapBin)) {
+  throw new Error(`missing ${target.bootstrapBin}; build ${target.bundleName} first`);
 }
 
 if (dryRun) {
   console.error(`[flash-configured] dry run; not flashing`);
-  console.error(`${python} -m esptool --chip esp32s3 --port ${port} flash_id`);
-  if (erase) console.error(`${python} -m esptool --chip esp32s3 --port ${port} erase_flash`);
+  console.error(`${python} -m esptool --chip ${target.esptoolChip} --port ${target.port} flash_id`);
+  if (erase)
+    console.error(`${python} -m esptool --chip ${target.esptoolChip} --port ${target.port} erase_flash`);
   console.error(`${python} ${flashBootstrapArgs.join(' ')}`);
   console.error(`${python} ${flashNvsArgs.join(' ')}`);
   process.exit(0);
 }
 
-run(python, ['-m', 'esptool', '--chip', 'esp32s3', '--port', port, 'flash_id']);
-if (erase) run(python, ['-m', 'esptool', '--chip', 'esp32s3', '--port', port, 'erase_flash']);
+run(python, ['-m', 'esptool', '--chip', target.esptoolChip, '--port', target.port, 'flash_id']);
+if (erase) run(python, ['-m', 'esptool', '--chip', target.esptoolChip, '--port', target.port, 'erase_flash']);
 run(python, flashBootstrapArgs);
 run(python, flashNvsArgs);
-run(python, ['-m', 'esptool', '--chip', 'esp32s3', '--port', port, 'read_mac']);
+run(python, ['-m', 'esptool', '--chip', target.esptoolChip, '--port', target.port, 'read_mac']);
 
 function readEnv(path) {
   if (!existsSync(path)) throw new Error(`missing ${path}`);
@@ -247,14 +248,107 @@ function localIPv4s() {
     .map((item) => item.address);
 }
 
-function resolvePort(value) {
-  if (value && value !== 'auto') return value;
+function resolveFlashTarget(value) {
+  if (value && value !== 'auto' && !value.includes('*')) {
+    const probe = probePort(value);
+    if (probe.ok) return targetForChip(value, probe.chip);
+    throw new Error(`ESP_PORT=${value} is not a supported board: ${probe.reason}`);
+  }
   const dev = '/dev';
-  const preferred = readdirSync(dev)
-    .filter((name) => name.startsWith('cu.usbmodem') || name.startsWith('tty.usbmodem'))
-    .sort();
-  if (preferred.length > 0) return `${dev}/${preferred[0]}`;
-  throw new Error('could not auto-detect ESP_PORT; set ESP_PORT=/dev/cu.usbmodem...');
+  const candidates = listPortCandidates(value, dev);
+  for (const port of candidates) {
+    const probe = probePort(port);
+    if (probe.ok) return targetForChip(port, probe.chip);
+    console.error(`[flash-configured] skipping ${port}: ${probe.reason}`);
+  }
+  if (candidates.length > 0) {
+    throw new Error(
+      `could not find a supported ESP port; checked ${candidates.join(', ')}. ` +
+        'Supported chips are ESP32-S3 and disposable ESP32 experiment boards.',
+    );
+  }
+  throw new Error(
+    'could not auto-detect ESP_PORT; set ESP_PORT=auto, /dev/cu.usbmodem*, or /dev/cu.usbserial...',
+  );
+}
+
+function listPortCandidates(value, dev) {
+  const names = readdirSync(dev);
+  const patterns =
+    value && value !== 'auto'
+      ? [value]
+      : ['/dev/cu.usbmodem*', '/dev/cu.usbserial*', '/dev/tty.usbmodem*', '/dev/tty.usbserial*'];
+  const matches = new Set();
+  for (const pattern of patterns) {
+    const base = pattern.startsWith(`${dev}/`) ? pattern.slice(dev.length + 1) : pattern;
+    const regex = wildcardRegex(base);
+    for (const name of names) {
+      if (regex.test(name)) matches.add(`${dev}/${name}`);
+    }
+  }
+  return Array.from(matches).sort((a, b) => {
+    const aName = a.slice(dev.length + 1);
+    const bName = b.slice(dev.length + 1);
+    const aCu = aName.startsWith('cu.') ? 0 : 1;
+    const bCu = bName.startsWith('cu.') ? 0 : 1;
+    return aCu - bCu || aName.localeCompare(bName);
+  });
+}
+
+function wildcardRegex(pattern) {
+  const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*');
+  return new RegExp(`^${escaped}$`);
+}
+
+function probePort(port) {
+  const result = spawnSync(python, ['-m', 'esptool', '--chip', 'auto', '--port', port, 'flash_id'], {
+    cwd: root,
+    env: process.env,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+    timeout: 15000,
+  });
+  const output = `${result.stdout || ''}\n${result.stderr || ''}`;
+  if (result.error) return { ok: false, reason: result.error.message };
+  const chip = detectChip(output);
+  if (result.status === 0 && chip) return { ok: true, chip };
+  if (result.status === 0) return { ok: false, reason: 'could not identify chip from esptool output' };
+  const fatal = output.match(/A fatal error occurred: ([^\n]+)/);
+  if (fatal) return { ok: false, reason: fatal[1] };
+  return { ok: false, reason: `esptool exited ${result.status ?? 'without status'}` };
+}
+
+function detectChip(output) {
+  if (/\bESP32-S3\b/i.test(output)) return 'ESP32-S3';
+  if (/\bESP32\b/i.test(output)) return 'ESP32';
+  return null;
+}
+
+function targetForChip(port, chip) {
+  if (chip === 'ESP32-S3') {
+    return {
+      port,
+      detectedChip: chip,
+      esptoolChip: 'esp32s3',
+      bundleName: 'dist/bootstrap',
+      bootstrapBin: resolve(root, 'dist', 'bootstrap', 'rf-sense-bootstrap-combined.bin'),
+    };
+  }
+  if (chip === 'ESP32') {
+    return {
+      port,
+      detectedChip: chip,
+      esptoolChip: 'esp32',
+      bundleName: 'dist/bootstrap-esp32-experiment',
+      bootstrapBin: resolve(
+        root,
+        'dist',
+        'bootstrap-esp32-experiment',
+        'rf-sense-bootstrap-combined.bin',
+      ),
+    };
+  }
+  throw new Error(`unsupported chip ${chip} on ${port}`);
 }
 
 function firstExisting(paths) {
