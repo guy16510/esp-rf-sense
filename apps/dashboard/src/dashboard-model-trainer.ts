@@ -9,7 +9,13 @@ import {
   validateExamples,
 } from './prototype-training.js';
 import { parseDatagram } from './protocol.js';
-import type { RoomGeometry } from './room-geometry.js';
+import { normalizeRoomPoint, type RoomGeometry } from './room-geometry.js';
+
+interface RecordingPosition {
+  label: string;
+  x: number | null;
+  y: number | null;
+}
 
 interface RecordingMeta {
   name: string;
@@ -17,9 +23,13 @@ interface RecordingMeta {
   target?: 'label' | 'position';
   complete: boolean;
   subjectId?: string;
+  subject?: {
+    id?: string;
+    position?: RecordingPosition;
+  };
   day?: string;
   movement?: string;
-  position?: { label: string; x: number | null; y: number | null };
+  position?: RecordingPosition;
 }
 
 interface TrainingSummary {
@@ -56,15 +66,27 @@ export async function trainDashboardModel(options: {
 
   for (const meta of metas) {
     if (!meta.complete || meta.label === 'auto-smoke') continue;
+    if (meta.target && meta.target !== target) continue;
+    const position = positionFor(meta);
+    const subjectId = subjectIdFor(meta);
     const label = classLabel(meta, target);
     if (!label) {
-      incompleteMetadata.push(meta.name);
+      incompleteMetadata.push(`${meta.name} (position label)`);
       continue;
     }
-    const frames = dominantWidth(
-      await readAmplitudeFrames(join(options.recordingsDir, `${meta.name}.csi.bin`)),
+    if (target === 'position' && !String(meta.day ?? '').trim()) {
+      incompleteMetadata.push(`${meta.name} (day)`);
+      continue;
+    }
+    if (target === 'position' && !/empty|clear/iu.test(meta.label) && !subjectId) {
+      incompleteMetadata.push(`${meta.name} (subject ID)`);
+      continue;
+    }
+
+    const streams = await readAmplitudeStreams(
+      join(options.recordingsDir, `${meta.name}.csi.bin`),
     );
-    const rows = windowsFor(frames, options.window, options.step);
+    const rows = streams.flatMap((stream) => windowsFor(stream, options.window, options.step));
     if (rows.length === 0) continue;
 
     const point = coordinatesFor(label, meta, options.geometry, target);
@@ -77,16 +99,16 @@ export async function trainDashboardModel(options: {
         features,
         label,
         recordingId: meta.name,
-        subjectId: String(meta.subjectId ?? '').trim(),
+        subjectId,
         day: String(meta.day ?? '').trim(),
-        position: String(meta.position?.label ?? (/empty|clear/iu.test(meta.label) ? 'empty' : '')),
+        position: String(position?.label ?? (/empty|clear/iu.test(meta.label) ? 'empty' : '')),
       });
     }
   }
 
   if (incompleteMetadata.length > 0) {
     throw new Error(
-      `position recordings are missing stable position metadata: ${incompleteMetadata.join(', ')}`,
+      `position recordings are missing required metadata: ${incompleteMetadata.join(', ')}`,
     );
   }
   if (examples.length === 0) throw new Error('no complete recordings produced training windows');
@@ -159,7 +181,15 @@ function validateClassCoverage(classes: string[], target: 'label' | 'position'):
 function classLabel(meta: RecordingMeta, target: 'label' | 'position'): string {
   if (target === 'label') return String(meta.label ?? '').trim();
   if (/empty|clear/iu.test(meta.label)) return 'empty';
-  return String(meta.position?.label ?? '').trim();
+  return String(positionFor(meta)?.label ?? '').trim();
+}
+
+function subjectIdFor(meta: RecordingMeta): string {
+  return String(meta.subjectId ?? meta.subject?.id ?? '').trim();
+}
+
+function positionFor(meta: RecordingMeta): RecordingPosition | undefined {
+  return meta.position ?? meta.subject?.position;
 }
 
 function coordinatesFor(
@@ -170,11 +200,15 @@ function coordinatesFor(
 ): { x: number | null; y: number | null } {
   if (target !== 'position' || /empty|clear/iu.test(label)) return { x: null, y: null };
   const configured = geometry?.zones[label];
-  if (configured) return { x: configured.x, y: configured.y };
-  const x = meta.position?.x;
-  const y = meta.position?.y;
+  if (configured && geometry) return normalizeRoomPoint(geometry, configured);
+  const position = positionFor(meta);
+  const x = position?.x;
+  const y = position?.y;
   if (!Number.isFinite(x) || !Number.isFinite(y)) {
-    throw new Error(`position ${label} is missing calibrated x/y coordinates`);
+    throw new Error(`position ${label} is missing calibrated normalized x/y coordinates`);
+  }
+  if (Number(x) < 0 || Number(x) > 1 || Number(y) < 0 || Number(y) > 1) {
+    throw new Error(`position ${label} x/y coordinates must be between 0 and 1`);
   }
   return { x: Number(x), y: Number(y) };
 }
@@ -206,9 +240,9 @@ async function loadMetas(recordingsDir: string): Promise<RecordingMeta[]> {
   ) as Promise<RecordingMeta[]>;
 }
 
-async function readAmplitudeFrames(path: string): Promise<Float64Array[]> {
+async function readAmplitudeStreams(path: string): Promise<Float64Array[][]> {
   const content = await readFile(path);
-  const frames: Float64Array[] = [];
+  const streams = new Map<number, Float64Array[]>();
   let offset = 0;
   while (offset + 4 <= content.length) {
     const length = content.readUInt32LE(offset);
@@ -217,9 +251,12 @@ async function readAmplitudeFrames(path: string): Promise<Float64Array[]> {
     const parsed = parseDatagram(content.subarray(offset, offset + length));
     offset += length;
     if (!parsed.ok) continue;
+    const deviceId = parsed.datagram.header.deviceId >>> 0;
+    const frames = streams.get(deviceId) ?? [];
     for (const frame of parsed.datagram.frames) frames.push(decodeAmplitude(frame));
+    streams.set(deviceId, frames);
   }
-  return frames;
+  return [...streams.values()].map(dominantWidth).filter((frames) => frames.length > 0);
 }
 
 function windowsFor(frames: readonly Float64Array[], window: number, step: number): number[][] {
