@@ -61,7 +61,10 @@ jobs:
       - name: Run Playwright end-to-end tests
         env:
           RF_DASHBOARD_URL: http://127.0.0.1:8080
-        run: npx playwright test --config apps/dashboard/e2e/playwright.config.mjs
+        run: |
+          set -o pipefail
+          npx playwright test --config apps/dashboard/e2e/playwright.config.mjs \
+            2>&1 | tee apps/dashboard/e2e/artifacts/playwright.log
 
       - name: Upload browser diagnostics
         if: always()
