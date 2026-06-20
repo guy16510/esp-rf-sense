@@ -1,7 +1,7 @@
+import type { ContinuousXYModel } from './continuous-xy-model.js';
 import { JointPositionEngine } from './joint-position-engine.js';
 import { LiveXYRuntime, type ReceiverSourceMapping } from './live-xy-runtime.js';
 import { MultiNodeDashboardServer } from './multi-node-web-server.js';
-import type { XYModel } from './simulated-xy-pipeline.js';
 
 export interface XYDashboardRuntimeOptions {
   host?: string;
@@ -13,7 +13,7 @@ export interface XYDashboardRuntimeOptions {
 }
 
 export function createXYDashboardRuntime(
-  model: XYModel,
+  model: ContinuousXYModel,
   mappings: ReceiverSourceMapping[],
   options: XYDashboardRuntimeOptions = {},
 ) {
@@ -22,7 +22,9 @@ export function createXYDashboardRuntime(
     options.roomWidthMeters ?? 4,
     options.roomHeightMeters ?? 4,
   );
-  const runtime = new LiveXYRuntime(model, mappings);
+  const runtime = new LiveXYRuntime(model, mappings, {
+    onPrediction: (prediction) => engine.setJointPrediction(prediction),
+  });
   const dashboard = new MultiNodeDashboardServer(engine, {
     host: options.host ?? '127.0.0.1',
     port: options.port ?? 0,
@@ -33,12 +35,13 @@ export function createXYDashboardRuntime(
     model: {
       loaded: true,
       path: options.modelPath ?? 'models/xy.json',
-      target: 'position',
+      target: 'continuous-xy',
       classes: ['continuous-xy'],
       trainedAt: null,
       recordings: model.examples.length,
       windows: null,
       error: null,
+      validatedContinuousXY: model.validation.validatedContinuousXY,
     },
   });
   return { engine, runtime, dashboard };

@@ -13,7 +13,7 @@ export interface ActivityResult {
   zone: string | null;
   position: PositionEstimate | null;
   mode: 'heuristic' | 'portable-model';
-  modelTarget?: 'presence' | 'label' | 'position';
+  modelTarget?: 'presence' | 'label' | 'position' | 'coarse-zones';
   scores: Record<string, number>;
   diagnostics: ActivityDiagnostics;
 }
@@ -75,7 +75,7 @@ export class ActivityClassifier {
         zone: position?.zone ?? null,
         position,
         mode: 'portable-model',
-        modelTarget: this.model.bundle.target,
+        modelTarget: this.model.bundle.target === 'position' ? 'coarse-zones' : this.model.bundle.target,
         scores: prediction.scores,
         diagnostics: this.diagnostics(activationScore, true),
       };

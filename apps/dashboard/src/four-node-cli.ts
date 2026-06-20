@@ -1,10 +1,14 @@
 import { createSocket } from 'node:dgram';
 
+import { CONTINUOUS_XY_MODEL_FORMAT, loadContinuousXYModel, type ContinuousXYModel } from './continuous-xy-model.js';
 import { DashboardRecorder } from './dashboard-recorder.js';
 import { loadPortableModel } from './model.js';
 import { MultiNodeEngine } from './multi-node-engine.js';
 import { MultiNodeDashboardServer } from './multi-node-web-server.js';
+import { JointPositionEngine } from './joint-position-engine.js';
+import { LiveXYRuntime, type ReceiverSourceMapping } from './live-xy-runtime.js';
 import { parseDatagram } from './protocol.js';
+import { decodeCsiFrameV2 } from './protocol-v2.js';
 
 const values = new Map<string, string>();
 for (let index = 2; index < process.argv.length; index++) {
@@ -30,7 +34,7 @@ const requiredNodeCount = Math.max(1, numberFlag('required-nodes', 4));
 const minFrameRateHz = Math.max(0, numberFlag('min-frame-rate', 5));
 const recordingsDir = values.get('recordings-dir') ?? 'recordings/dashboard';
 const modelPath = values.get('model') ?? values.get('model-path') ?? 'models/dashboard-labels.json';
-const model = values.has('model') ? await loadPortableModel(modelPath) : undefined;
+const loadedModel = values.has('model') ? await loadDashboardCliModel(modelPath) : undefined;
 const defaultSlotDeviceIds = ['2f4b47f0', '2f4b5390', '2f4b735c', '2f77883c'];
 const slotDeviceIds = ['a', 'b', 'c', 'd'].map((slot, index) =>
   (
@@ -39,12 +43,38 @@ const slotDeviceIds = ['a', 'b', 'c', 'd'].map((slot, index) =>
     defaultSlotDeviceIds[index]!
   ).toLowerCase(),
 );
-const engine = new MultiNodeEngine({
+const continuousModel = loadedModel?.kind === 'continuous-xy' ? loadedModel.model : undefined;
+const portableModel = loadedModel?.kind === 'portable' ? loadedModel.model : undefined;
+const engine = continuousModel
+  ? new JointPositionEngine(
+      {
+        requiredNodeCount,
+        minFrameRateHz,
+        windowFrames: Math.max(8, numberFlag('window', 64)),
+      },
+      continuousModel.room.widthMeters,
+      continuousModel.room.heightMeters,
+    )
+  : new MultiNodeEngine({
   requiredNodeCount,
   minFrameRateHz,
   windowFrames: Math.max(8, numberFlag('window', 64)),
-  ...(model ? { model } : {}),
+  ...(portableModel ? { model: portableModel } : {}),
 });
+const receiverMappings: ReceiverSourceMapping[] = ['a', 'b', 'c', 'd'].map((slot, index) => ({
+  slot: slot.toUpperCase() as ReceiverSourceMapping['slot'],
+  deviceId: slotDeviceIds[index]!,
+  ...(values.get(`slot-${slot}-address`) ? { address: values.get(`slot-${slot}-address`)! } : {}),
+  ...(values.get(`slot-${slot}-port`) ? { port: numberFlag(`slot-${slot}-port`, 0) } : {}),
+}));
+const xyRuntime = continuousModel
+  ? new LiveXYRuntime(continuousModel, receiverMappings, {
+      windowPackets: Math.max(4, numberFlag('xy-window-packets', 24)),
+      onPrediction: (prediction) => {
+        if (engine instanceof JointPositionEngine) engine.setJointPrediction(prediction);
+      },
+    })
+  : null;
 const recorder = new DashboardRecorder(recordingsDir);
 const dashboard = new MultiNodeDashboardServer(engine, {
   host: httpHost,
@@ -54,24 +84,42 @@ const dashboard = new MultiNodeDashboardServer(engine, {
   recordingsDir,
   modelPath,
   slotDeviceIds,
-  ...(model
+  ...(loadedModel
     ? {
         model: {
           loaded: true,
           path: modelPath,
-          target: model.bundle.target,
-          classes: model.bundle.classes,
+          target: loadedModel.kind === 'continuous-xy' ? 'continuous-xy' : loadedModel.model.bundle.target === 'position' ? 'coarse-zones' : loadedModel.model.bundle.target,
+          classes: loadedModel.kind === 'continuous-xy' ? ['continuous-xy'] : loadedModel.model.bundle.classes,
           trainedAt: null,
-          recordings: null,
+          recordings: loadedModel.kind === 'continuous-xy' ? loadedModel.model.examples.length : null,
           windows: null,
           error: null,
+          ...(loadedModel.kind === 'continuous-xy'
+            ? { validatedContinuousXY: loadedModel.model.validation.validatedContinuousXY }
+            : {}),
         },
       }
     : {}),
 });
 const socket = createSocket({ type: 'udp4', reuseAddr: true });
 
-socket.on('message', (message) => {
+socket.on('message', (message, remote) => {
+  if (xyRuntime && isProtocolV2(message)) {
+    const receivedAt = Date.now();
+    const predictions = xyRuntime.acceptDatagram(
+      message,
+      { address: remote.address, port: remote.port },
+      receivedAt,
+    );
+    try {
+      recorder.writeProtocolV2(message, decodeCsiFrameV2(message), { address: remote.address, port: remote.port }, receivedAt);
+    } catch {
+      engine.recordInvalid();
+    }
+    if (predictions.length === 0) return;
+    return;
+  }
   const result = parseDatagram(message);
   if (!result.ok) {
     engine.recordInvalid();
@@ -97,8 +145,15 @@ console.error(`[four-node] readiness requires ${requiredNodeCount} streams`);
 console.error(`[four-node] readiness minimum frame rate ${minFrameRateHz.toFixed(1)} Hz`);
 console.error(`[four-node] slots A-D ${slotDeviceIds.join(', ')}`);
 console.error(
-  `[four-node] model ${model ? `loaded ${modelPath}` : `not loaded; train to ${modelPath}`}`,
+  `[four-node] model ${loadedModel ? `loaded ${modelPath} (${loadedModel.kind})` : `not loaded; train to ${modelPath}`}`,
 );
+if (xyRuntime) {
+  console.error(
+    `[four-node] continuous XY source mappings ${receiverMappings
+      .map((item) => `${item.slot}:${item.address ?? '*'}:${item.port ?? '*'}`)
+      .join(', ')}`,
+  );
+}
 
 let stopping = false;
 const stop = async (signal: string) => {
@@ -112,3 +167,27 @@ const stop = async (signal: string) => {
 };
 process.on('SIGINT', () => void stop('SIGINT'));
 process.on('SIGTERM', () => void stop('SIGTERM'));
+
+type DashboardCliModel =
+  | { kind: 'continuous-xy'; model: ContinuousXYModel }
+  | { kind: 'portable'; model: Awaited<ReturnType<typeof loadPortableModel>> };
+
+async function loadDashboardCliModel(path: string): Promise<DashboardCliModel> {
+  const { readFile } = await import('node:fs/promises');
+  const parsed = JSON.parse(await readFile(path, 'utf8')) as { format?: string };
+  if (parsed.format === CONTINUOUS_XY_MODEL_FORMAT) {
+    return { kind: 'continuous-xy', model: await loadContinuousXYModel(path) };
+  }
+  return { kind: 'portable', model: await loadPortableModel(path) };
+}
+
+function isProtocolV2(message: Buffer): boolean {
+  if (message.length < 5) return false;
+  if (message.subarray(0, 4).toString('ascii') !== 'RFV2') return false;
+  try {
+    decodeCsiFrameV2(message);
+    return true;
+  } catch {
+    return false;
+  }
+}

@@ -244,8 +244,8 @@ function fuse(
     state === 'active' ? activeProbability : state === 'clear' ? 1 - activeProbability : 0;
   const profileNodes = readyNodes.length > 0 ? readyNodes : allNodes;
   const position = fusePositionEstimates(readyNodes);
-  const modelTarget = readyNodes.find((node) => node.modelTarget === 'position')
-    ? 'position'
+  const modelTarget = readyNodes.find((node) => node.modelTarget === 'coarse-zones' || node.modelTarget === 'position')
+    ? 'coarse-zones'
     : readyNodes.find((node) => node.modelTarget)?.modelTarget;
   const bubbles =
     position?.accepted && position.x !== null && position.y !== null
@@ -303,7 +303,7 @@ function fuse(
 }
 
 export function fusePositionEstimates(nodes: readonly DashboardState[]): PositionEstimate | null {
-  const positionNodes = nodes.filter((node) => node.modelTarget === 'position');
+  const positionNodes = nodes.filter((node) => node.modelTarget === 'coarse-zones' || node.modelTarget === 'position');
   if (positionNodes.length === 0) return null;
   const accepted = positionNodes.filter(
     (node) =>

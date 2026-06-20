@@ -3,6 +3,8 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { fileURLToPath } from 'node:url';
 
 import type { DashboardState } from './contracts.js';
+import { buildContinuousXYDataset } from './continuous-xy-dataset.js';
+import { saveContinuousXYModel, trainContinuousXYModel } from './continuous-xy-model.js';
 import { trainDashboardModel } from './dashboard-model-trainer.js';
 import type { DashboardRecorder } from './dashboard-recorder.js';
 import { loadPortableModel } from './model.js';
@@ -45,6 +47,7 @@ interface ModelStatus {
   recordings: number | null;
   windows: number | null;
   error: string | null;
+  validatedContinuousXY?: boolean;
 }
 
 export class MultiNodeDashboardServer {
@@ -164,6 +167,10 @@ export class MultiNodeDashboardServer {
             multiNode: true,
             fusedRfActivity: true,
             trainedLabels: this.modelStatus.loaded,
+            continuousXY: this.modelStatus.target === 'continuous-xy',
+            validatedContinuousXY:
+              this.modelStatus.target === 'continuous-xy' &&
+              this.modelStatus.validatedContinuousXY === true,
             peopleCount: false,
             pose: false,
             orientation: false,
@@ -171,7 +178,9 @@ export class MultiNodeDashboardServer {
             distance: false,
           },
           disclaimer:
-            'Four RF links provide fused disturbance evidence, not pose, identity, exact range, or people count.',
+            this.modelStatus.target === 'continuous-xy'
+              ? 'Continuous XY is an estimated RF disturbance coordinate with uncertainty, not exact body location, pose, identity, range, or people count.'
+              : 'Four RF links provide fused disturbance evidence, not pose, identity, exact range, or people count.',
         });
       if (request.method === 'GET' && url.pathname === '/api/events')
         return void this.sendJson(response, 200, []);
@@ -184,6 +193,35 @@ export class MultiNodeDashboardServer {
       if (request.method === 'POST' && url.pathname === '/api/model/train') {
         const body = await this.readBody(request);
         const outPath = String(body.path || this.options.modelPath);
+        if (body.target === 'continuous-xy') {
+          const sourceMappings = parseSourceMappings(body.sourceMappings);
+          const examples = await buildContinuousXYDataset({
+            recordingsDir: this.options.recordingsDir,
+            sourceMappings,
+            windowPackets: Math.max(4, Number(body.windowPackets ?? 24)),
+            stepPackets: Math.max(1, Number(body.stepPackets ?? 8)),
+          });
+          const model = trainContinuousXYModel({
+            examples,
+            roomWidthMeters: positiveNumber(body.roomWidthMeters, 'roomWidthMeters'),
+            roomHeightMeters: positiveNumber(body.roomHeightMeters, 'roomHeightMeters'),
+            featureVersion: 1,
+          });
+          await saveContinuousXYModel(outPath, model);
+          this.modelStatus = {
+            loaded: true,
+            path: outPath,
+            target: 'continuous-xy',
+            classes: ['continuous-xy'],
+            trainedAt: model.trainedAt,
+            recordings: new Set(examples.map((example) => example.recordingId)).size,
+            windows: examples.length,
+            error: null,
+            validatedContinuousXY: model.validation.validatedContinuousXY,
+          };
+          this.broadcast('model', this.modelStatus);
+          return void this.sendJson(response, 201, this.modelStatus);
+        }
         const target = body.target === 'label' ? 'label' : 'position';
         const geometry =
           body.roomGeometry && typeof body.roomGeometry === 'object'
@@ -209,7 +247,7 @@ export class MultiNodeDashboardServer {
         this.modelStatus = {
           loaded: true,
           path: outPath,
-          target: trained.summary.target,
+          target: trained.summary.target === 'position' ? 'coarse-zones' : trained.summary.target,
           classes: trained.summary.classes,
           trainedAt: trained.summary.trainedAt,
           recordings: trained.summary.recordings,
@@ -227,7 +265,7 @@ export class MultiNodeDashboardServer {
         this.modelStatus = {
           loaded: true,
           path,
-          target: loaded.bundle.target,
+          target: loaded.bundle.target === 'position' ? 'coarse-zones' : loaded.bundle.target,
           classes: loaded.bundle.classes,
           trainedAt: null,
           recordings: null,
@@ -389,4 +427,33 @@ export class MultiNodeDashboardServer {
     });
     response.end(content);
   }
+}
+
+function parseSourceMappings(value: unknown): Record<'A' | 'B' | 'C' | 'D', { address?: string; port?: number; deviceId: string }> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('continuous XY training requires sourceMappings for receiver slots A-D');
+  }
+  const record = value as Record<string, unknown>;
+  const output = {} as Record<'A' | 'B' | 'C' | 'D', { address?: string; port?: number; deviceId: string }>;
+  for (const slot of ['A', 'B', 'C', 'D'] as const) {
+    const item = record[slot];
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      throw new Error(`sourceMappings.${slot} is required`);
+    }
+    const mapping = item as Record<string, unknown>;
+    const deviceId = typeof mapping.deviceId === 'string' && mapping.deviceId.trim() ? mapping.deviceId.trim() : '';
+    if (!deviceId) throw new Error(`sourceMappings.${slot}.deviceId is required`);
+    output[slot] = {
+      deviceId,
+      ...(typeof mapping.address === 'string' && mapping.address.trim() ? { address: mapping.address.trim() } : {}),
+      ...(mapping.port !== undefined ? { port: positiveNumber(mapping.port, `sourceMappings.${slot}.port`) } : {}),
+    };
+  }
+  return output;
+}
+
+function positiveNumber(value: unknown, name: string): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) throw new Error(`${name} must be a positive number`);
+  return parsed;
 }

@@ -13,7 +13,7 @@
   <Category>Tools:</Category>
   <WebUI>http://[IP]:[PORT:8080]/fleet</WebUI>
   <TemplateURL>https://raw.githubusercontent.com/guy16510/esp-rf-sense/main/deploy/unraid/rf-sense.xml</TemplateURL>
-  <Icon/>
+  <Icon>https://raw.githubusercontent.com/guy16510/esp-rf-sense/main/deploy/chip-icon.png</Icon>
   <ExtraParams>--restart unless-stopped</ExtraParams>
   <PostArgs/>
   <CPUset/>

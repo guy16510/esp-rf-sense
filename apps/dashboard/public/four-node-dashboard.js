@@ -7,6 +7,8 @@ const positionState = {
   snapshot: null,
   recording: null,
   model: null,
+  smoothed: null,
+  trail: [],
 };
 const dashboardStream = window.RfSenseDashboardStream;
 
@@ -35,22 +37,22 @@ function installPositionControls() {
   form.className = 'position-capture-form';
   form.innerHTML = `
     <div class="position-form-copy">
-      <strong>Record a calibrated room zone</strong>
-      <small>Coordinates are normalized to the room map, 0 is left/top and 1 is right/bottom.</small>
+      <strong>Record a calibrated XY point</strong>
+      <small>Coordinates are measured in meters from the room origin. Zone names are optional annotations.</small>
     </div>
     <div class="position-field-grid">
-      <label>Zone label<input id="positionLabel" value="door" autocomplete="off" /></label>
+      <label>Point annotation<input id="positionLabel" value="grid-1" autocomplete="off" /></label>
       <label>Person ID<input id="positionSubject" value="person-1" autocomplete="off" /></label>
       <label>Day<input id="positionDay" type="date" /></label>
       <label>Movement<select id="positionMovement"><option value="stationary">Stationary</option><option value="moving">Moving slowly</option></select></label>
-      <label>X coordinate<input id="positionX" type="number" min="0" max="1" step="0.01" value="0.50" /></label>
-      <label>Y coordinate<input id="positionY" type="number" min="0" max="1" step="0.01" value="0.15" /></label>
+      <label>X meters<input id="positionX" type="number" min="0" step="0.05" value="2.00" /></label>
+      <label>Y meters<input id="positionY" type="number" min="0" step="0.05" value="1.50" /></label>
     </div>
     <div class="position-button-row">
       <button id="recordEmptyPosition" type="button">Record empty room</button>
-      <button id="recordPositionZone" type="button">Record this zone</button>
+      <button id="recordPositionZone" type="button">Record this XY point</button>
     </div>
-    <p id="positionCaptureHint" class="muted">Collect at least two independent recordings for empty and every occupied zone.</p>
+    <p id="positionCaptureHint" class="muted">Collect empty-room sessions plus a meter-spaced calibration grid before training continuous XY.</p>
   `;
   body.insertBefore(form, originalButtons || body.firstChild);
   get('positionDay').value = new Date().toISOString().slice(0, 10);
@@ -61,7 +63,7 @@ function installPositionControls() {
     panel.querySelector('#trainModelButton'),
   );
   if (modelPanel) {
-    modelPanel.querySelector('h2').textContent = 'Coarse position classifier';
+    modelPanel.querySelector('h2').textContent = 'Coarse zone fallback';
     get('trainModelButton').textContent = 'Train position model';
     get('modelStatus').textContent =
       'Train from labelled empty-room and occupied-zone recordings. The output is a coarse zone estimate, not camera-like tracking.';
@@ -82,12 +84,12 @@ function installPositionControls() {
     card.id = 'positionSummaryCard';
     card.className = 'summary-card position-summary-card';
     card.innerHTML = `
-      <span>Trained position</span>
+      <span>Position estimate</span>
       <strong id="positionZone">Not available</strong>
       <small id="positionEvidence">Load a position model</small>
       <div class="position-mini-metrics">
         <span><b id="positionConfidence">0%</b> confidence</span>
-        <span><b id="positionAgreement">0%</b> agreement</span>
+        <span><b id="positionAgreement">0%</b> overlap</span>
       </div>
     `;
     overview.append(card);
@@ -123,38 +125,54 @@ function renderPositionSnapshot(snapshot) {
   positionState.snapshot = snapshot;
   const fused = snapshot.fused || {};
   const position = fused.position || null;
-  const positionModel = fused.modelTarget === 'position' || positionState.model?.target === 'position';
+  const continuousModel = fused.modelTarget === 'continuous-xy' || positionState.model?.target === 'continuous-xy';
+  const coarseModel =
+    fused.modelTarget === 'coarse-zones' ||
+    fused.modelTarget === 'position' ||
+    positionState.model?.target === 'coarse-zones' ||
+    positionState.model?.target === 'position';
+  const positionModel = continuousModel || coarseModel;
   const accepted = Boolean(positionModel && position?.accepted && finite(position.x) && finite(position.y));
 
   const zone = get('positionZone');
   const evidence = get('positionEvidence');
   if (zone && evidence) {
-    zone.textContent = accepted ? position.zone || 'Unknown zone' : positionModel ? 'No accepted zone' : 'Not available';
-    evidence.textContent = accepted
-      ? `${position.contributors} receivers support this zone`
-      : position?.reason || (positionModel ? 'Waiting for receiver agreement' : 'Load a trained position model');
+    if (continuousModel && accepted) {
+      zone.textContent = `X ${meters(position.xMeters)}  Y ${meters(position.yMeters)}`;
+      evidence.textContent = `Uncertainty ±${meters(position.uncertaintyMeters)}, ${position.receiverCount || position.contributors} receivers, ${percent(position.packetOverlap ?? position.agreement)} packet overlap`;
+    } else if (continuousModel) {
+      zone.textContent = 'Position unavailable';
+      evidence.textContent = `Reason: ${position?.reason || 'waiting for accepted continuous XY estimate'}`;
+    } else if (coarseModel && accepted) {
+      zone.textContent = `Likely zone: ${position.zone || 'unknown'}`;
+      evidence.textContent = 'Continuous XY model not loaded';
+    } else {
+      zone.textContent = coarseModel ? 'No accepted coarse zone' : 'Not available';
+      evidence.textContent = position?.reason || (positionModel ? 'Waiting for receiver agreement' : 'Load a position model');
+    }
     get('positionConfidence').textContent = percent(position?.confidence);
-    get('positionAgreement').textContent = percent(position?.agreement);
+    get('positionAgreement').textContent = percent(position?.packetOverlap ?? position?.agreement);
   }
 
-  renderRoomPosition(positionModel, accepted ? position : null, fused);
+  renderRoomPosition({ positionModel, continuousModel, coarseModel }, accepted ? position : null, fused);
   renderNodePositionLabels(snapshot);
   updatePositionControls();
 }
 
-function renderRoomPosition(positionModel, position, fused) {
+function renderRoomPosition(modes, position, fused) {
   const svg = document.querySelector('#roomD3');
   const panel = document.querySelector('.rf-room-panel');
   if (!svg || !panel) {
     setTimeout(() => renderPositionSnapshot(positionState.snapshot), 100);
     return;
   }
-  panel.classList.toggle('position-model-active', positionModel);
+  panel.classList.toggle('position-model-active', modes.positionModel);
   let layer = svg.querySelector('#trainedPositionLayer');
   if (!layer) {
     layer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     layer.id = 'trainedPositionLayer';
     layer.innerHTML = `
+      <g class="trained-position-trail"></g>
       <circle class="trained-position-halo" r="66"></circle>
       <circle class="trained-position-core" r="28"></circle>
       <text class="trained-position-label" text-anchor="middle" dy="5"></text>
@@ -163,30 +181,46 @@ function renderRoomPosition(positionModel, position, fused) {
   }
 
   if (!position) {
+    positionState.smoothed = null;
+    positionState.trail = [];
     layer.setAttribute('hidden', '');
   } else {
     layer.removeAttribute('hidden');
-    const x = 62 + clamp(position.x) * 776;
-    const y = 62 + clamp(position.y) * 486;
+    const smooth = smoothPosition(position);
+    const x = 62 + clamp(smooth.x) * 776;
+    const y = 62 + clamp(smooth.y) * 486;
+    const uncertaintyMeters = Number(position.uncertaintyMeters ?? 0);
+    const roomMeters = Math.max(1, Number(position.xMeters || 0) / Math.max(0.001, Number(position.x || 0.5)), Number(position.yMeters || 0) / Math.max(0.001, Number(position.y || 0.5)));
+    const uncertaintyRadius = modes.continuousModel
+      ? Math.max(18, Math.min(180, (uncertaintyMeters / roomMeters) * 776))
+      : 66;
     layer.setAttribute('transform', `translate(${x.toFixed(2)},${y.toFixed(2)})`);
-    layer.querySelector('text').textContent = position.zone || 'zone';
+    layer.querySelector('.trained-position-halo').setAttribute('r', uncertaintyRadius.toFixed(1));
+    layer.querySelector('text').textContent = modes.continuousModel
+      ? `${meters(position.xMeters)}, ${meters(position.yMeters)}`
+      : position.zone || 'zone';
     layer.style.setProperty('--position-confidence', clamp(position.confidence));
+    renderTrail(layer, smooth);
   }
 
   const mode = panel.querySelector('.rf-room-actions .badge');
   const roomState = panel.querySelector('.rf-room-footer strong');
   const roomNote = panel.querySelector('.rf-room-footer small');
-  if (mode) mode.textContent = positionModel ? 'Trained zone model' : 'Heuristic disturbance';
-  if (roomState && positionModel) {
+  if (mode) mode.textContent = modes.continuousModel ? 'Continuous estimated XY' : modes.coarseModel ? 'Coarse zones' : 'Heuristic disturbance';
+  if (roomState && modes.positionModel) {
     roomState.textContent = position
-      ? `Position: ${position.zone}`
+      ? modes.continuousModel
+        ? `Estimated XY: ${meters(position.xMeters)}, ${meters(position.yMeters)}`
+        : `Likely zone: ${position.zone}`
       : fused.state === 'clear'
         ? 'Room clear'
-        : 'Position not accepted';
+        : 'Position unavailable';
   }
-  if (roomNote && positionModel) {
+  if (roomNote && modes.positionModel) {
     roomNote.textContent = position
-      ? `${percent(position.confidence)} confidence, ${percent(position.agreement)} receiver agreement.`
+      ? modes.continuousModel
+        ? `Uncertainty ±${meters(position.uncertaintyMeters)}, ${position.receiverCount || position.contributors} receivers, ${percent(position.packetOverlap ?? position.agreement)} packet overlap.`
+        : `${percent(position.confidence)} confidence, ${percent(position.agreement)} receiver agreement.`
       : fused.position?.reason || 'No marker is shown until the trained model passes confidence and agreement gates.';
   }
 }
@@ -196,7 +230,7 @@ function renderNodePositionLabels(snapshot) {
   for (const card of document.querySelectorAll('.node-card')) {
     const idText = card.querySelector('.node-id')?.textContent || '';
     const node = nodes.find((candidate) => idText.includes(String(candidate.deviceId || '')));
-    if (!node || node.modelTarget !== 'position') continue;
+    if (!node || (node.modelTarget !== 'coarse-zones' && node.modelTarget !== 'position')) continue;
     const state = card.querySelector('.node-state');
     if (state) {
       state.textContent = node.position?.accepted
@@ -226,17 +260,21 @@ async function startPositionRecording(empty) {
   if (!day) return showCaptureError('Select the recording day.');
   if (!empty && !label) return showCaptureError('Enter a stable zone label.');
   if (!empty && !subjectId) return showCaptureError('Enter a person ID for occupied recordings.');
-  if (!empty && (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || x > 1 || y < 0 || y > 1)) {
-    return showCaptureError('X and Y must both be between 0 and 1.');
+  if (!empty && (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || y < 0)) {
+    return showCaptureError('X and Y must be non-negative meter coordinates.');
   }
 
   const metadata = {
     label: empty ? 'empty' : `occupied-${label}`,
-    target: 'position',
+    target: 'continuous-xy',
+    recordingId: empty ? `empty-${Date.now()}` : `${label}-${x}-${y}-${Date.now()}`,
     subjectId: empty ? undefined : subjectId,
     day,
     movement: empty ? 'empty' : movement,
-    position: empty ? { label: 'empty', x: null, y: null } : { label, x, y },
+    zoneAnnotation: empty ? undefined : label,
+    xMeters: empty ? undefined : x,
+    yMeters: empty ? undefined : y,
+    orientationDegrees: 0,
   };
   hint.textContent = empty ? 'Starting empty-room capture...' : `Starting ${label} capture...`;
   try {
@@ -247,7 +285,7 @@ async function startPositionRecording(empty) {
     });
     hint.textContent = empty
       ? 'Recording empty room. Keep people out of the sensing area.'
-      : `Recording ${label}. Follow the selected movement pattern at the calibrated point.`;
+      : `Recording ${label} at X ${x.toFixed(2)} m, Y ${y.toFixed(2)} m.`;
   } catch (error) {
     showCaptureError(error.message);
   }
@@ -331,8 +369,56 @@ function clamp(value) {
   return Number.isFinite(parsed) ? Math.max(0, Math.min(1, parsed)) : 0;
 }
 
+function smoothPosition(position) {
+  const now = Date.now();
+  const target = { x: clamp(position.x), y: clamp(position.y), t: now };
+  const previous = positionState.smoothed;
+  if (!previous) {
+    positionState.smoothed = target;
+    positionState.trail = [target];
+    return target;
+  }
+  const dt = Math.max(0.05, Math.min(1, (now - previous.t) / 1000));
+  const maxStep = 0.55 * dt;
+  const dx = target.x - previous.x;
+  const dy = target.y - previous.y;
+  const distance = Math.hypot(dx, dy);
+  const limited = distance > maxStep ? maxStep / distance : 1;
+  const alpha = 0.35;
+  const next = {
+    x: previous.x + dx * limited * alpha,
+    y: previous.y + dy * limited * alpha,
+    t: now,
+  };
+  positionState.smoothed = next;
+  positionState.trail.push(next);
+  const cutoff = now - 10_000;
+  positionState.trail = positionState.trail.filter((item) => item.t >= cutoff).slice(-90);
+  return next;
+}
+
+function renderTrail(layer, current) {
+  const trail = layer.querySelector('.trained-position-trail');
+  if (!trail) return;
+  const now = Date.now();
+  trail.innerHTML = positionState.trail
+    .map((point) => {
+      const age = Math.max(0, Math.min(1, (now - point.t) / 10_000));
+      const opacity = (0.45 * (1 - age)).toFixed(3);
+      const cx = ((point.x - current.x) * 776).toFixed(1);
+      const cy = ((point.y - current.y) * 486).toFixed(1);
+      return `<circle class="trained-position-trail-dot" cx="${cx}" cy="${cy}" r="5" opacity="${opacity}"></circle>`;
+    })
+    .join('');
+}
+
 function percent(value) {
   return `${Math.round(clamp(value) * 100)}%`;
+}
+
+function meters(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? `${parsed.toFixed(2)} m` : 'n/a';
 }
 
 function injectPositionStyles() {
@@ -352,6 +438,7 @@ function injectPositionStyles() {
     #trainedPositionLayer[hidden] { display: none; }
     .trained-position-halo { fill: rgba(45, 212, 191, .12); stroke: rgba(94, 234, 212, .25); stroke-width: 2; filter: url(#presenceGlow); }
     .trained-position-core { fill: rgba(45, 212, 191, .82); stroke: #ccfbf1; stroke-width: 2; }
+    .trained-position-trail-dot { fill: rgba(94, 234, 212, .75); pointer-events: none; }
     .trained-position-label { fill: #041414; font-size: 13px; font-weight: 800; text-transform: uppercase; pointer-events: none; }
     @media (max-width: 900px) { .position-field-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
     @media (max-width: 560px) { .position-field-grid { grid-template-columns: 1fr; } }

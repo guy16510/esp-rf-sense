@@ -1,6 +1,6 @@
 import type { PositionEstimate } from './contracts.js';
+import type { ContinuousXYPrediction } from './continuous-xy-model.js';
 import { MultiNodeEngine, type MultiNodeOptions, type MultiNodeSnapshot } from './multi-node-engine.js';
-import type { XYPrediction } from './simulated-xy-pipeline.js';
 
 export class JointPositionEngine extends MultiNodeEngine {
   private jointPosition: PositionEstimate | null | undefined;
@@ -9,22 +9,35 @@ export class JointPositionEngine extends MultiNodeEngine {
     super(options);
   }
 
-  setJointPrediction(prediction: XYPrediction | null): void {
+  setJointPrediction(prediction: ContinuousXYPrediction | null): void {
     if (prediction === null) {
       this.jointPosition = null;
       return;
     }
     const accepted = prediction.accepted && Number.isFinite(prediction.xMeters) && Number.isFinite(prediction.yMeters);
+    const xNormalized = accepted
+      ? prediction.xNormalized ?? clamp((prediction.xMeters ?? 0) / this.roomWidthMeters)
+      : null;
+    const yNormalized = accepted
+      ? prediction.yNormalized ?? clamp((prediction.yMeters ?? 0) / this.roomHeightMeters)
+      : null;
     this.jointPosition = {
       accepted,
-      zone: accepted ? 'continuous XY' : null,
-      x: accepted ? clamp(prediction.xMeters / this.roomWidthMeters) : null,
-      y: accepted ? clamp(prediction.yMeters / this.roomHeightMeters) : null,
-      confidence: accepted ? clamp(1 - prediction.uncertaintyMeters / 1.5) : 0,
-      margin: accepted ? Math.max(0, 1 - prediction.uncertaintyMeters) : 0,
+      zone: null,
+      x: xNormalized,
+      y: yNormalized,
+      xMeters: accepted ? prediction.xMeters : null,
+      yMeters: accepted ? prediction.yMeters : null,
+      xNormalized,
+      yNormalized,
+      uncertaintyMeters: prediction.uncertaintyMeters,
+      receiverCount: prediction.receiverCount,
+      packetOverlap: prediction.packetOverlap,
+      confidence: accepted ? prediction.confidence : 0,
+      margin: accepted && prediction.uncertaintyMeters !== null ? Math.max(0, 1 - prediction.uncertaintyMeters) : 0,
       contributors: prediction.receiverCount,
       agreement: prediction.packetOverlap,
-      reason: prediction.rejectionReason,
+      reason: prediction.reason,
     };
   }
 
@@ -38,7 +51,7 @@ export class JointPositionEngine extends MultiNodeEngine {
         ...snapshot.fused,
         position,
         zone: position?.accepted ? position.zone : null,
-        modelTarget: 'position',
+        modelTarget: 'continuous-xy',
         bubbles: position?.accepted && position.x !== null && position.y !== null ? [{
           id: 'joint-xy-position', x: position.x, y: position.y,
           radius: 0.07 + (1 - position.confidence) * 0.08,

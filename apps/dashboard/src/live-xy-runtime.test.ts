@@ -1,22 +1,32 @@
 import { describe, expect, it } from 'vitest';
+import { trainContinuousXYModel, type ContinuousXYExample } from './continuous-xy-model.js';
+import { buildJointXYFeatures } from './joint-xy-features.js';
+import type { AlignedPacket, ReceiverObservation } from './joint-packet-aligner.js';
 import { LiveXYRuntime } from './live-xy-runtime.js';
 import { encodeCsiFrameV2 } from './protocol-v2.js';
-import type { XYModel, XYTrainingExample } from './simulated-xy-pipeline.js';
 
 const rssis = [-45, -52, -49, -58];
 const amplitudes = [40, 25, 30, 18];
-const base = amplitudes.flatMap((value, index) => [rssis[index]!, value, value, 16, 1]);
-const features = [...base, 7, 4, 13, -3, 6, 9];
-const example: XYTrainingExample = {
-  xMeters: 2.5, yMeters: 1.5, features,
-  recordingId: 'r', subjectId: 'p', day: 'd', orientationDegrees: 0,
-  receiverCount: 4, packetOverlap: 1, empty: false,
-};
-const model: XYModel = {
-  examples: Array.from({ length: 8 }, () => example),
-  featureMean: Array(26).fill(0), featureScale: Array(26).fill(1),
-  densityThreshold: 1, uncertaintyThreshold: 0.75,
-};
+const features = buildJointXYFeatures([alignedPacket()]);
+const examples: ContinuousXYExample[] = Array.from({ length: 8 }, (_item, index) => ({
+  xMeters: 2.5,
+  yMeters: 1.5,
+  features,
+  recordingId: `r-${index}`,
+  subjectId: 'p',
+  day: '2026-06-20',
+  orientationDegrees: 0,
+  movement: 'stationary',
+  receiverCount: 4,
+  packetOverlap: 1,
+  empty: false,
+}));
+const model = trainContinuousXYModel({
+  examples,
+  roomWidthMeters: 4,
+  roomHeightMeters: 4,
+  featureVersion: 1,
+});
 
 describe('LiveXYRuntime', () => {
   it('aligns four protocol v2 receivers and predicts XY', () => {
@@ -33,3 +43,42 @@ describe('LiveXYRuntime', () => {
     expect(runtime.snapshot().alignment.fourOfFourCount).toBe(1);
   });
 });
+
+function alignedPacket(): AlignedPacket {
+  const observations = Object.fromEntries(
+    ['A', 'B', 'C', 'D'].map((slot, index) => [
+      slot,
+      observation(slot as 'A' | 'B' | 'C' | 'D', rssis[index]!, amplitudes[index]!),
+    ]),
+  ) as AlignedPacket['observations'];
+  return {
+    transmitterId: '77',
+    transmitterBootId: '88',
+    transmitterPacketSeq: 42,
+    observations,
+    receiverCount: 4,
+    complete: true,
+    firstReceivedAtMs: 1000,
+    finalizedAtMs: 1003,
+  };
+}
+
+function observation(slot: 'A' | 'B' | 'C' | 'D', rssi: number, amplitude: number): ReceiverObservation {
+  return {
+    receiverSlot: slot,
+    receiverDeviceId: `rx-${slot}`,
+    receiverBootId: `rx-${slot}:boot`,
+    receiverFrameSeq: 42,
+    receiverTimestampUs: 42000,
+    transmitterId: '77',
+    transmitterBootId: '88',
+    transmitterPacketSeq: 42,
+    rssi,
+    noiseFloor: -95,
+    channel: 6,
+    bandwidthMhz: 20,
+    firstWordInvalid: false,
+    csi: Buffer.alloc(16, amplitude),
+    receivedAtMs: 1000,
+  };
+}

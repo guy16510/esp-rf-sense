@@ -3,6 +3,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
 import type { CsiDatagram } from './protocol.js';
+import type { CsiFrameV2 } from './protocol-v2.js';
 
 export interface RecordingStatus {
   active: boolean;
@@ -31,10 +32,15 @@ interface PositionMetadata {
 }
 
 interface SupplementalMetadata {
-  target?: 'label' | 'position';
+  target?: 'label' | 'position' | 'continuous-xy';
   subjectId?: string;
   day?: string;
   movement?: string;
+  recordingId?: string;
+  xMeters?: number;
+  yMeters?: number;
+  orientationDegrees?: number;
+  zoneAnnotation?: string;
   position?: PositionMetadata;
 }
 
@@ -174,6 +180,35 @@ export class DashboardRecorder {
     this.statusValue.bytes += raw.length;
   }
 
+  writeProtocolV2(raw: Buffer, frame: CsiFrameV2, source: { address: string; port: number }, recvUnixMs: number): void {
+    if (!this.bin || !this.jsonl || !this.statusValue.active) return;
+    this.lenPrefix.writeUInt32LE(raw.length, 0);
+    this.bin.write(Buffer.from(this.lenPrefix));
+    this.bin.write(raw);
+    this.jsonl.write(
+      `${JSON.stringify({
+        protocolVersion: 2,
+        recvUnixMs,
+        source,
+        receiverFrameSeq: frame.receiverFrameSeq,
+        receiverTimestampUs: frame.receiverTimestampUs.toString(),
+        transmitterId: frame.transmitterId,
+        transmitterBootId: frame.transmitterBootId,
+        transmitterPacketSeq: frame.transmitterPacketSeq,
+        rssi: frame.rssi,
+        noiseFloor: frame.noiseFloor,
+        channel: frame.channel,
+        bandwidthMhz: frame.bandwidthMhz,
+        firstWordInvalid: frame.firstWordInvalid,
+        csiLen: frame.csi.length,
+        csiBase64: frame.csi.toString('base64'),
+      })}\n`,
+    );
+    this.statusValue.datagrams++;
+    this.statusValue.frames++;
+    this.statusValue.bytes += raw.length;
+  }
+
   shouldAutoStop(): boolean {
     return this.status().autoStopReady;
   }
@@ -228,11 +263,31 @@ function decodeRecordingRequest(value: string): DecodedRecordingRequest {
       Buffer.from(value.slice(METADATA_PREFIX.length), 'base64url').toString('utf8'),
     ) as Record<string, unknown>;
     const label = requiredText(decoded.label, 'recording label');
-    const target = decoded.target === 'position' ? 'position' : decoded.target === 'label' ? 'label' : undefined;
+    const target =
+      decoded.target === 'continuous-xy'
+        ? 'continuous-xy'
+        : decoded.target === 'position'
+          ? 'position'
+          : decoded.target === 'label'
+            ? 'label'
+            : undefined;
     const subjectId = optionalText(decoded.subjectId);
     const day = optionalText(decoded.day);
     const movement = optionalText(decoded.movement);
+    const recordingId = optionalText(decoded.recordingId);
+    const orientationDegrees = optionalNumber(decoded.orientationDegrees);
+    const xMeters = optionalNumber(decoded.xMeters);
+    const yMeters = optionalNumber(decoded.yMeters);
+    const zoneAnnotation = optionalText(decoded.zoneAnnotation);
     const position = decodePosition(decoded.position);
+    if (target === 'continuous-xy') {
+      if ((xMeters === undefined) !== (yMeters === undefined)) {
+        throw new Error('continuous XY xMeters and yMeters must both be set or both omitted for empty-room recordings');
+      }
+      if (xMeters !== undefined && (xMeters < 0 || yMeters === undefined || yMeters < 0)) {
+        throw new Error('continuous XY coordinates must be non-negative meters');
+      }
+    }
     return {
       label,
       metadata: {
@@ -240,6 +295,11 @@ function decodeRecordingRequest(value: string): DecodedRecordingRequest {
         ...(subjectId ? { subjectId } : {}),
         ...(day ? { day } : {}),
         ...(movement ? { movement } : {}),
+        ...(recordingId ? { recordingId } : {}),
+        ...(orientationDegrees !== undefined ? { orientationDegrees } : {}),
+        ...(xMeters !== undefined ? { xMeters } : {}),
+        ...(yMeters !== undefined ? { yMeters } : {}),
+        ...(zoneAnnotation ? { zoneAnnotation } : {}),
         ...(position ? { position } : {}),
       },
     };
@@ -272,6 +332,13 @@ function nullableNumber(value: unknown): number | null {
 
 function optionalText(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+function optionalNumber(value: unknown): number | undefined {
+  if (value === null || value === undefined || value === '') return undefined;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) throw new Error('metadata numeric fields must be finite numbers');
+  return parsed;
 }
 
 function requiredText(value: unknown, name: string): string {

@@ -46,6 +46,13 @@ export interface PositionEstimate {
   zone: string | null;
   x: number | null;
   y: number | null;
+  xMeters?: number | null;
+  yMeters?: number | null;
+  xNormalized?: number | null;
+  yNormalized?: number | null;
+  uncertaintyMeters?: number | null;
+  receiverCount?: number;
+  packetOverlap?: number;
   confidence: number;
   margin: number;
   contributors: number;
@@ -80,7 +87,7 @@ export interface DashboardState {
   canonicalStreamKey?: string | null;
   latestStreamKey?: string | null;
   mode: 'heuristic' | 'portable-model' | 'fused';
-  modelTarget?: 'presence' | 'label' | 'position';
+  modelTarget?: 'presence' | 'label' | 'position' | 'coarse-zones' | 'continuous-xy';
   scores: Record<string, number>;
   diagnostics: ActivityDiagnostics;
   source?: 'real' | 'replay' | 'simulated';
