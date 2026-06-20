@@ -93,11 +93,12 @@ async function alignedPacketsForRecording(
 ): Promise<AlignedPacket[]> {
   const aligner = new JointPacketAligner(75, 8192);
   const packets: AlignedPacket[] = [];
+  const inferredSources = new Map<string, ReceiverSlot>();
   const lines = (await readFile(jsonlPath, 'utf8')).split(/\r?\n/u).filter(Boolean);
   for (const line of lines) {
     const parsed = JSON.parse(line) as ProtocolV2JsonLine;
     if (parsed.protocolVersion !== 2) continue;
-    const mapped = slotForSource(parsed.source ?? {}, sourceMappings);
+    const mapped = slotForSource(parsed.source ?? {}, sourceMappings, inferredSources);
     if (!mapped) continue;
     const observation: ReceiverObservation = {
       receiverSlot: mapped.slot,
@@ -125,11 +126,26 @@ async function alignedPacketsForRecording(
 function slotForSource(
   source: { address?: string; port?: number },
   sourceMappings: BuildContinuousXYDatasetOptions['sourceMappings'],
+  inferredSources: Map<string, ReceiverSlot>,
 ): { slot: ReceiverSlot; deviceId: string } | null {
-  for (const [slot, mapping] of Object.entries(sourceMappings) as Array<[ReceiverSlot, { address?: string; port?: number; deviceId: string }]>) {
+  const entries = Object.entries(sourceMappings) as Array<
+    [ReceiverSlot, { address?: string; port?: number; deviceId: string }]
+  >;
+  const explicit = entries.filter(([, mapping]) => mapping.address !== undefined || mapping.port !== undefined);
+  for (const [slot, mapping] of explicit) {
     if (mapping.address !== undefined && mapping.address !== source.address) continue;
     if (mapping.port !== undefined && mapping.port !== source.port) continue;
     return { slot, deviceId: mapping.deviceId };
   }
-  return null;
+
+  if (explicit.length > 0) return null;
+  const sourceKey = `${source.address ?? ''}:${source.port ?? ''}`;
+  if (sourceKey === ':') return null;
+  let slot = inferredSources.get(sourceKey);
+  if (!slot) {
+    slot = (['A', 'B', 'C', 'D'] as const)[inferredSources.size];
+    if (!slot) return null;
+    inferredSources.set(sourceKey, slot);
+  }
+  return { slot, deviceId: sourceMappings[slot].deviceId };
 }
