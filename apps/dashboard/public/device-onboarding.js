@@ -1,3 +1,8 @@
+const style = document.createElement('link');
+style.rel = 'stylesheet';
+style.href = '/device-onboarding.css';
+document.head.append(style);
+
 const root = document.getElementById('app');
 root.innerHTML = `
   <section class="hero">
