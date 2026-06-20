@@ -37,6 +37,28 @@ test('shows device redirection, OTA, and validation onboarding', async ({ page }
   await expect(page.getByRole('heading', { name: /Validate before training/ })).toBeVisible();
 });
 
+test('starts quick bar calibration with short normalized position captures', async ({ page, request }) => {
+  let requestBody = null;
+  await page.route('**/api/recording/start', async (route) => {
+    requestBody = route.request().postDataJSON();
+    await route.fulfill({
+      status: 201,
+      contentType: 'application/json',
+      body: JSON.stringify({ active: true, targetSeconds: 15, targetFrames: 300 }),
+    });
+  });
+  await page.goto(`${baseURL}/fleet?guide=calibrate`, { waitUntil: 'domcontentloaded' });
+  await expect(page.getByRole('heading', { name: /Train the customer area in about two minutes/ })).toBeVisible();
+  await expect(page.locator('#calibrationStatus')).toContainText('4 / 4 ready', { timeout: 10_000 });
+  await page.locator('#calibrationAction').click();
+  await expect.poll(() => requestBody).not.toBeNull();
+  expect(requestBody.targetSeconds).toBe(15);
+  expect(requestBody.targetFrames).toBe(300);
+  expect(requestBody.label).toContain('rfsense-meta:');
+  const stop = await request.post(`${baseURL}/api/recording/stop`);
+  expect(stop.ok()).toBe(true);
+});
+
 test('falls back to uploaded coarse position recordings when continuous XY cannot train', async ({ page }) => {
   const targets = [];
   await page.route('**/api/model/train', async (route) => {
