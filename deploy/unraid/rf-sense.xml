@@ -1,0 +1,34 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>RF-Sense</Name>
+  <Repository>ghcr.io/guy16510/esp-rf-sense:latest</Repository>
+  <Registry>https://github.com/guy16510/esp-rf-sense/pkgs/container/esp-rf-sense</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/guy16510/esp-rf-sense/issues</Support>
+  <Project>https://github.com/guy16510/esp-rf-sense</Project>
+  <Overview>Four-receiver ESP32 Wi-Fi CSI control center. Receives CSI datagrams over UDP, records calibration sessions, trains position models, and serves the live RF dashboard.</Overview>
+  <Category>Tools:</Category>
+  <WebUI>http://[IP]:[PORT:8080]/fleet</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/guy16510/esp-rf-sense/main/deploy/unraid/rf-sense.xml</TemplateURL>
+  <Icon/>
+  <ExtraParams>--restart unless-stopped</ExtraParams>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled/>
+  <DonateText/>
+  <DonateLink/>
+  <Requires>Configure every ESP32 receiver to send its CSI stream to the Unraid server IP on UDP port 5566.</Requires>
+  <Config Name="Application Data" Target="/data" Default="/mnt/user/appdata/rf-sense" Mode="rw" Description="Persistent recordings, room calibration, and trained position models." Type="Path" Display="always" Required="true" Mask="false"/>
+  <Config Name="Dashboard Port" Target="8080" Default="8080" Mode="tcp" Description="RF-Sense dashboard and API." Type="Port" Display="always" Required="true" Mask="false"/>
+  <Config Name="CSI UDP Port" Target="5566" Default="5566" Mode="udp" Description="UDP destination used by all ESP32 CSI receivers." Type="Port" Display="always" Required="true" Mask="false"/>
+  <Config Name="Required Receivers" Target="RF_SENSE_REQUIRED_NODES" Default="4" Mode="" Description="Number of receiver streams required before capture is enabled." Type="Variable" Display="always" Required="true" Mask="false"/>
+  <Config Name="Minimum Frame Rate" Target="RF_SENSE_MIN_FRAME_RATE" Default="5" Mode="" Description="Minimum frames per second required from each receiver." Type="Variable" Display="advanced" Required="true" Mask="false"/>
+  <Config Name="Auto-load Trained Model" Target="RF_SENSE_AUTO_LOAD_MODEL" Default="true" Mode="" Description="Load the persisted dashboard position model when the container starts." Type="Variable" Display="advanced" Required="true" Mask="false"/>
+  <Config Name="Receiver A Device ID" Target="RF_SENSE_SLOT_A" Default="2f4b47f0" Mode="" Description="Firmware device ID assigned to room slot A." Type="Variable" Display="advanced" Required="true" Mask="false"/>
+  <Config Name="Receiver B Device ID" Target="RF_SENSE_SLOT_B" Default="2f4b5390" Mode="" Description="Firmware device ID assigned to room slot B." Type="Variable" Display="advanced" Required="true" Mask="false"/>
+  <Config Name="Receiver C Device ID" Target="RF_SENSE_SLOT_C" Default="2f4b735c" Mode="" Description="Firmware device ID assigned to room slot C." Type="Variable" Display="advanced" Required="true" Mask="false"/>
+  <Config Name="Receiver D Device ID" Target="RF_SENSE_SLOT_D" Default="2f77883c" Mode="" Description="Firmware device ID assigned to room slot D." Type="Variable" Display="advanced" Required="true" Mask="false"/>
+</Container>
