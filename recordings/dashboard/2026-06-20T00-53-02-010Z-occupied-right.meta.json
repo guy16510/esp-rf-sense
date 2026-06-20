@@ -1,0 +1,31 @@
+{
+  "name": "2026-06-20T00-53-02-010Z-occupied-right",
+  "label": "occupied-right",
+  "startedAt": "2026-06-20T00:53:02.011Z",
+  "finishedAt": "2026-06-20T00:54:32.198Z",
+  "complete": true,
+  "target": "position",
+  "subjectId": "person-1",
+  "day": "2026-06-20",
+  "movement": "stationary",
+  "position": {
+    "label": "right",
+    "x": 0.8,
+    "y": 0.5
+  },
+  "subject": {
+    "id": "person-1",
+    "position": {
+      "label": "right",
+      "x": 0.8,
+      "y": 0.5
+    }
+  },
+  "stats": {
+    "datagrams": 4610,
+    "frames": 8986,
+    "bytes": 4885740,
+    "targetSeconds": 90,
+    "targetFrames": 2000
+  }
+}

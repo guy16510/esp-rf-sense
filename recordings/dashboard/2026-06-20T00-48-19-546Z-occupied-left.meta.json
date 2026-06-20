@@ -1,0 +1,31 @@
+{
+  "name": "2026-06-20T00-48-19-546Z-occupied-left",
+  "label": "occupied-left",
+  "startedAt": "2026-06-20T00:48:19.547Z",
+  "finishedAt": "2026-06-20T00:49:49.562Z",
+  "complete": true,
+  "target": "position",
+  "subjectId": "person-1",
+  "day": "2026-06-20",
+  "movement": "stationary",
+  "position": {
+    "label": "left",
+    "x": 0.2,
+    "y": 0.5
+  },
+  "subject": {
+    "id": "person-1",
+    "position": {
+      "label": "left",
+      "x": 0.2,
+      "y": 0.5
+    }
+  },
+  "stats": {
+    "datagrams": 4580,
+    "frames": 8939,
+    "bytes": 4863108,
+    "targetSeconds": 90,
+    "targetFrames": 2000
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "name": "run-2026-06-15T16-58-15-047Z",
+  "startedAt": "2026-06-15T16:58:15.048Z",
+  "complete": true,
+  "note": "stopped via SIGTERM",
+  "finishedAt": "2026-06-15T17:00:17.698Z",
+  "stats": {
+    "totalDatagrams": 1550,
+    "validDatagrams": 1550,
+    "invalidDatagrams": 0,
+    "invalidReasons": {},
+    "reboots": 0,
+    "streams": [
+      {
+        "deviceId": 841533452,
+        "bootId": 621393218,
+        "firstPacketSeq": 18253,
+        "lastPacketSeq": 19802,
+        "received": 1550,
+        "framesReceived": 3062,
+        "lostEstimate": 0,
+        "outOfOrder": 0,
+        "duplicates": 0,
+        "maintenanceDatagrams": 0,
+        "firstRecvUnixMs": 1781542695109,
+        "lastRecvUnixMs": 1781542817547,
+        "lossPpm": 0
+      }
+    ]
+  }
+}

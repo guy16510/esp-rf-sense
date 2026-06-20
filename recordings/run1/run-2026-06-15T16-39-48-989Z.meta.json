@@ -1,0 +1,15 @@
+{
+  "name": "run-2026-06-15T16-39-48-989Z",
+  "startedAt": "2026-06-15T16:39:48.990Z",
+  "complete": true,
+  "note": "stopped via SIGINT",
+  "finishedAt": "2026-06-15T16:40:11.018Z",
+  "stats": {
+    "totalDatagrams": 0,
+    "validDatagrams": 0,
+    "invalidDatagrams": 0,
+    "invalidReasons": {},
+    "reboots": 0,
+    "streams": []
+  }
+}

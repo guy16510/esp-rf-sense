@@ -1,0 +1,29 @@
+{
+  "name": "2026-06-20T00-22-58-792Z-empty",
+  "label": "empty",
+  "startedAt": "2026-06-20T00:22:58.793Z",
+  "finishedAt": "2026-06-20T00:24:28.867Z",
+  "complete": true,
+  "target": "position",
+  "day": "2026-06-20",
+  "movement": "empty",
+  "position": {
+    "label": "empty",
+    "x": null,
+    "y": null
+  },
+  "subject": {
+    "position": {
+      "label": "empty",
+      "x": null,
+      "y": null
+    }
+  },
+  "stats": {
+    "datagrams": 4589,
+    "frames": 8946,
+    "bytes": 4869060,
+    "targetSeconds": 90,
+    "targetFrames": 2000
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "name": "2026-06-19T01-20-47-362Z-occupied-stationary",
+  "label": "occupied-stationary",
+  "startedAt": "2026-06-19T01:20:47.365Z",
+  "finishedAt": "2026-06-19T01:22:17.514Z",
+  "complete": true,
+  "stats": {
+    "datagrams": 4461,
+    "frames": 9000,
+    "bytes": 4876716,
+    "targetSeconds": 90,
+    "targetFrames": 2000
+  }
+}

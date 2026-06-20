@@ -1,0 +1,31 @@
+{
+  "name": "2026-06-20T00-50-30-129Z-occupied-center",
+  "label": "occupied-center",
+  "startedAt": "2026-06-20T00:50:30.129Z",
+  "finishedAt": "2026-06-20T00:52:00.136Z",
+  "complete": true,
+  "target": "position",
+  "subjectId": "person-1",
+  "day": "2026-06-20",
+  "movement": "stationary",
+  "position": {
+    "label": "center",
+    "x": 0.5,
+    "y": 0.5
+  },
+  "subject": {
+    "id": "person-1",
+    "position": {
+      "label": "center",
+      "x": 0.5,
+      "y": 0.5
+    }
+  },
+  "stats": {
+    "datagrams": 4520,
+    "frames": 8915,
+    "bytes": 4797828,
+    "targetSeconds": 90,
+    "targetFrames": 2000
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "name": "usb-bringup-current-main",
+  "startedAt": "2026-06-18T15:45:05.357Z",
+  "complete": true,
+  "note": "stopped via SIGINT",
+  "finishedAt": "2026-06-18T15:45:28.889Z",
+  "stats": {
+    "totalDatagrams": 298,
+    "validDatagrams": 298,
+    "invalidDatagrams": 0,
+    "invalidReasons": {},
+    "reboots": 0,
+    "streams": [
+      {
+        "deviceId": 4143923828,
+        "bootId": 2563857881,
+        "firstPacketSeq": 447,
+        "lastPacketSeq": 744,
+        "received": 298,
+        "framesReceived": 592,
+        "lostEstimate": 0,
+        "outOfOrder": 0,
+        "duplicates": 0,
+        "maintenanceDatagrams": 0,
+        "firstRecvUnixMs": 1781797505407,
+        "lastRecvUnixMs": 1781797528755,
+        "lossPpm": 0
+      }
+    ]
+  }
+}

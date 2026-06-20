@@ -1,0 +1,12 @@
+{
+  "name": "2026-06-18T16-10-46-583Z-empty",
+  "label": "empty",
+  "startedAt": "2026-06-18T16:10:46.584Z",
+  "finishedAt": "2026-06-18T16:10:49.092Z",
+  "complete": true,
+  "stats": {
+    "datagrams": 38,
+    "frames": 75,
+    "bytes": 40680
+  }
+}

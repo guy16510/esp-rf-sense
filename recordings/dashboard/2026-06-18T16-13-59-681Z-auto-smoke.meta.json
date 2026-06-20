@@ -1,0 +1,14 @@
+{
+  "name": "2026-06-18T16-13-59-681Z-auto-smoke",
+  "label": "auto-smoke",
+  "startedAt": "2026-06-18T16:13:59.681Z",
+  "finishedAt": "2026-06-18T16:14:04.721Z",
+  "complete": true,
+  "stats": {
+    "datagrams": 69,
+    "frames": 145,
+    "bytes": 77880,
+    "targetSeconds": 5,
+    "targetFrames": 20
+  }
+}

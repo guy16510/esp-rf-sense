@@ -1,0 +1,14 @@
+{
+  "name": "2026-06-19T01-22-23-023Z-occupied-moving",
+  "label": "occupied-moving",
+  "startedAt": "2026-06-19T01:22:23.023Z",
+  "finishedAt": "2026-06-19T01:23:53.109Z",
+  "complete": true,
+  "stats": {
+    "datagrams": 4409,
+    "frames": 8921,
+    "bytes": 4811724,
+    "targetSeconds": 90,
+    "targetFrames": 2000
+  }
+}

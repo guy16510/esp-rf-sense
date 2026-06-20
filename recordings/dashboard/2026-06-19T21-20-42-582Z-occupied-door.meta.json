@@ -1,0 +1,31 @@
+{
+  "name": "2026-06-19T21-20-42-582Z-occupied-door",
+  "label": "occupied-door",
+  "startedAt": "2026-06-19T21:20:42.583Z",
+  "finishedAt": "2026-06-19T21:21:53.199Z",
+  "complete": true,
+  "target": "position",
+  "subjectId": "person-1",
+  "day": "2026-06-19",
+  "movement": "stationary",
+  "position": {
+    "label": "door",
+    "x": 0.5,
+    "y": 0.15
+  },
+  "subject": {
+    "id": "person-1",
+    "position": {
+      "label": "door",
+      "x": 0.5,
+      "y": 0.15
+    }
+  },
+  "stats": {
+    "datagrams": 3277,
+    "frames": 6955,
+    "bytes": 3628944,
+    "targetSeconds": 90,
+    "targetFrames": 2000
+  }
+}
