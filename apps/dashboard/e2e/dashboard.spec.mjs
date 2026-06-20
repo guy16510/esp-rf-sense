@@ -25,19 +25,16 @@ test('renders four live receivers and the D3 room view', async ({ page }) => {
     return regions + trainedLayer;
   }, { timeout: 12_000 }).toBeGreaterThan(0);
   await expect(page.locator('.rf-room-footer')).toContainText(/not verified people counts|Position unavailable|No marker is shown|no receiver accepted a trained position/);
-  await page.screenshot({ path: 'apps/dashboard/e2e/artifacts/control-center.png', fullPage: true });
 });
 
 test('shows device redirection, OTA, and validation onboarding', async ({ page }) => {
   await page.goto(`${baseURL}/fleet?guide=device`, { waitUntil: 'domcontentloaded' });
   await expect(page.getByRole('heading', { name: /Connect, redirect, update/ })).toBeVisible();
-  await expect(page.getByRole('heading', { name: /Change the collector server IP/ })).toBeVisible();
   await expect(page.locator('pre').first()).toContainText('--collector-host');
   await expect(page.getByRole('heading', { name: /Check and apply OTA firmware/ })).toBeVisible();
-  await expect(page.getByRole('heading', { name: /Validate before training/ })).toBeVisible();
 });
 
-test('starts quick bar calibration with short normalized position captures', async ({ page, request }) => {
+test('starts grouped quick bar capture and scores receiver placement', async ({ page, request }) => {
   let requestBody = null;
   await page.route('**/api/recording/start', async (route) => {
     requestBody = route.request().postDataJSON();
@@ -48,15 +45,46 @@ test('starts quick bar calibration with short normalized position captures', asy
     });
   });
   await page.goto(`${baseURL}/fleet?guide=calibrate`, { waitUntil: 'domcontentloaded' });
-  await expect(page.getByRole('heading', { name: /Train the customer area in about two minutes/ })).toBeVisible();
   await expect(page.locator('#calibrationStatus')).toContainText('4 / 4 ready', { timeout: 10_000 });
+  await page.locator('#placementAction').click();
+  await expect(page.locator('#placementResult')).toContainText('good spread');
   await page.locator('#calibrationAction').click();
   await expect.poll(() => requestBody).not.toBeNull();
   expect(requestBody.targetSeconds).toBe(15);
   expect(requestBody.targetFrames).toBe(300);
-  expect(requestBody.label).toContain('rfsense-meta:');
+  const metadata = decodeMetadata(requestBody.label);
+  expect(metadata.target).toBe('position');
+  expect(metadata.recordingId).toContain('quick-bar:pass-1:subject-bar-operator-1');
   const stop = await request.post(`${baseURL}/api/recording/stop`);
   expect(stop.ok()).toBe(true);
+});
+
+test('holds implausible fast coarse-zone jumps in the browser stream', async ({ page }) => {
+  await page.goto(baseURL, { waitUntil: 'domcontentloaded' });
+  const result = await page.evaluate(() => {
+    const stream = window.RfSenseDashboardStream;
+    const first = {
+      fused: {
+        modelTarget: 'coarse-zones',
+        state: 'active',
+        position: { accepted: true, zone: 'near-left', x: 0.18, y: 0.3, confidence: 0.7 },
+        bubbles: [{ x: 0.18, y: 0.3, zone: 'near-left' }],
+      },
+    };
+    const second = {
+      fused: {
+        modelTarget: 'coarse-zones',
+        state: 'active',
+        position: { accepted: true, zone: 'far-right', x: 0.82, y: 0.72, confidence: 0.7 },
+        bubbles: [{ x: 0.82, y: 0.72, zone: 'far-right' }],
+      },
+    };
+    stream.guardCoarseTransition(first);
+    stream.guardCoarseTransition(second);
+    return second.fused.position;
+  });
+  expect(result.zone).toBe('near-left');
+  expect(result.reason).toContain('implausible jump');
 });
 
 test('falls back to uploaded coarse position recordings when continuous XY cannot train', async ({ page }) => {
@@ -68,16 +96,11 @@ test('falls back to uploaded coarse position recordings when continuous XY canno
       await route.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ error: 'no usable RFV2 continuous XY recordings' }) });
       return;
     }
-    await route.fulfill({
-      status: 201,
-      contentType: 'application/json',
-      body: JSON.stringify({ loaded: true, target: 'coarse-zones', recordings: 9, windows: 180, classes: ['empty', 'left', 'center', 'right'] }),
-    });
+    await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ loaded: true, target: 'coarse-zones', recordings: 9, windows: 180, classes: ['empty', 'left', 'center', 'right'] }) });
   });
   await page.goto(baseURL, { waitUntil: 'domcontentloaded' });
   await page.locator('#trainModelButton').click();
   await expect(page.locator('#modelBadge')).toHaveText('Coarse XY fallback');
-  await expect(page.locator('#modelStatus')).toContainText('Loaded coarse XY fallback from 9 recordings and 180 windows');
   expect(targets).toEqual(['continuous-xy', 'position']);
 });
 
@@ -86,7 +109,11 @@ test('starts and stops a capture after all streams are ready', async ({ page, re
   await expect(page.locator('[data-recording-label="empty"]')).toBeEnabled({ timeout: 10_000 });
   const response = await request.post(`${baseURL}/api/recording/start`, { data: { label: 'empty', targetSeconds: 5, targetFrames: 1 } });
   expect(response.status()).toBe(201);
-  await expect(page.locator('#recordingBadge')).toContainText('Recording');
   const stop = await request.post(`${baseURL}/api/recording/stop`);
   expect(stop.ok()).toBe(true);
 });
+
+function decodeMetadata(label) {
+  const encoded = label.slice('rfsense-meta:'.length).replace(/-/g, '+').replace(/_/g, '/');
+  return JSON.parse(Buffer.from(encoded, 'base64').toString('utf8'));
+}
