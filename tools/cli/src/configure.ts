@@ -16,18 +16,29 @@ async function main(): Promise<void> {
     throw new Error('--collector-port must be an integer from 1 to 65535');
   }
 
-  const save = await apiCall(target, 'POST', '/config', { collectorHost, collectorPort });
-  if (save.status !== 200) throw new Error(`config save failed with HTTP ${save.status}`);
+  const save = await apiCall(target, 'POST', '/config', {
+    collectorHost,
+    collectorPort,
+  });
+  if (save.status !== 200) {
+    throw new Error(`config save failed with HTTP ${save.status}`);
+  }
 
   const verify = await apiCall(target, 'GET', '/config');
   const config = verify.json as { collectorHost?: string; collectorPort?: number };
-  if (verify.status !== 200 || config.collectorHost !== collectorHost || Number(config.collectorPort) !== collectorPort) {
+  if (
+    verify.status !== 200 ||
+    config.collectorHost !== collectorHost ||
+    Number(config.collectorPort) !== collectorPort
+  ) {
     throw new Error('config verification failed; device was not rebooted');
   }
 
   console.log(`saved collector target ${collectorHost}:${collectorPort}`);
   const reboot = await apiCall(target, 'POST', '/reboot');
-  if (reboot.status !== 202) throw new Error(`reboot request failed with HTTP ${reboot.status}`);
+  if (reboot.status !== 202) {
+    throw new Error(`reboot request failed with HTTP ${reboot.status}`);
+  }
   console.log('device is rebooting and will stream to the new collector target');
 }
 
