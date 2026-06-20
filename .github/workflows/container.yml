@@ -1,0 +1,106 @@
+name: container
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: container-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: build and smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build local image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          load: true
+          push: false
+          tags: rf-sense:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Start and verify dashboard
+        shell: bash
+        run: |
+          set -euo pipefail
+          data_dir="${RUNNER_TEMP}/rf-sense-data"
+          mkdir -p "$data_dir"
+          docker run --detach \
+            --name rf-sense-test \
+            --publish 18080:8080/tcp \
+            --publish 15566:5566/udp \
+            --volume "$data_dir:/data" \
+            rf-sense:test
+
+          cleanup() {
+            status=$?
+            if [ "$status" -ne 0 ]; then
+              docker logs rf-sense-test || true
+            fi
+            docker rm --force rf-sense-test >/dev/null 2>&1 || true
+            exit "$status"
+          }
+          trap cleanup EXIT
+
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent --show-error http://127.0.0.1:18080/api/readiness > readiness.json; then
+              break
+            fi
+            sleep 2
+          done
+
+          curl --fail --silent --show-error http://127.0.0.1:18080/fleet > fleet.html
+          grep --quiet "RF-SENSE" fleet.html
+          node -e "const state = require('./readiness.json'); if (typeof state.readyForCapture !== 'boolean') process.exit(1)"
+          test -d "$data_dir/recordings"
+          test -d "$data_dir/models"
+
+  publish:
+    name: publish GHCR image
+    if: github.event_name != 'pull_request'
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Sign in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Generate image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/guy16510/esp-rf-sense
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,prefix=sha-
+            type=ref,event=tag
+      - name: Build and publish image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          platforms: linux/amd64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: true
+          sbom: true
