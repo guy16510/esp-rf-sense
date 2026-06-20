@@ -42,6 +42,40 @@ test('renders four live receivers and the D3 room view', async ({ page }) => {
   });
 });
 
+test('falls back to uploaded coarse position recordings when continuous XY cannot train', async ({ page }) => {
+  const targets = [];
+  await page.route('**/api/model/train', async (route) => {
+    const body = route.request().postDataJSON();
+    targets.push(body.target);
+    if (body.target === 'continuous-xy') {
+      await route.fulfill({
+        status: 400,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: 'no usable RFV2 continuous XY recordings' }),
+      });
+      return;
+    }
+    await route.fulfill({
+      status: 201,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        loaded: true,
+        target: 'coarse-zones',
+        recordings: 9,
+        windows: 180,
+        classes: ['empty', 'left', 'center', 'right'],
+      }),
+    });
+  });
+
+  await page.goto(baseURL, { waitUntil: 'domcontentloaded' });
+  await page.locator('#trainModelButton').click();
+
+  await expect(page.locator('#modelBadge')).toHaveText('Coarse XY fallback');
+  await expect(page.locator('#modelStatus')).toContainText('Loaded coarse XY fallback from 9 recordings and 180 windows');
+  expect(targets).toEqual(['continuous-xy', 'position']);
+});
+
 test('starts and stops a capture after all streams are ready', async ({ page, request }) => {
   await page.goto(baseURL, { waitUntil: 'domcontentloaded' });
   await expect(page.locator('[data-recording-label="empty"]')).toBeEnabled({ timeout: 10_000 });
