@@ -1,9 +1,11 @@
-# CSI streaming protocol (v1)
+# CSI streaming protocol (v1 batch + v2 joint-localization frame)
 
-This is the single source of truth for the binary CSI datagram format. The firmware
-(`firmware/components/protocol`), the Node collector (`tools/collector`), and the Python
-analysis parser (`tools/analysis`) all implement *this* document. If you change the wire
-format, bump `protocolVersion`, update all three implementations, and update this file.
+This is the single source of truth for CSI datagrams. The legacy v1 `RFCS` batch remains
+supported for coarse-zone diagnostics. Continuous XY uses the v2 `RFV2` frame so four receivers
+can align observations by transmitter packet identity instead of by independent receiver clocks.
+
+If you change either wire format, bump `protocolVersion`, update firmware protocol code, the Node
+collector/dashboard decoder, the Python analysis parser, and this file together.
 
 ## Design goals
 
@@ -19,7 +21,7 @@ format, bump `protocolVersion`, update all three implementations, and update thi
 All multi-byte integers are **little-endian**. There is no padding beyond what is written
 below; every implementation serializes field-by-field (never by struct punning).
 
-## Datagram = header (32 B) + payload (N frame records) + CRC32 (4 B)
+## v1 datagram = header (32 B) + payload (N frame records) + CRC32 (4 B)
 
 ### Datagram header — 32 bytes
 
@@ -88,3 +90,45 @@ The firmware appends frames to a datagram until the next frame would exceed
 Device health is **not** part of this binary stream. It is exposed as JSON via
 `GET /api/v1/health` (HTTP) and optionally as a low-rate JSON UDP heartbeat. Raw CSI is
 never JSON-encoded per frame.
+
+## v2 continuous-XY frame = fixed header (39 B) + CSI payload + CRC32 (4 B)
+
+Protocol v2 carries exactly one receiver observation for one transmitter packet. It is intentionally
+not a per-receiver classifier payload. The dashboard aligns frames with the same
+`(transmitterId, transmitterBootId, transmitterPacketSeq)` across receiver slots A-D before building
+one joint feature window.
+
+### v2 fixed header — 39 bytes
+
+| Offset | Size | Field                  | Type  | Notes |
+|-------:|-----:|------------------------|-------|-------|
+| 0      | 4    | `magic`                | u8[4] | ASCII `R F V 2` = `0x52 0x46 0x56 0x32` |
+| 4      | 1    | `protocolVersion`      | u8    | `2` |
+| 5      | 4    | `receiverFrameSeq`     | u32   | per-receiver CSI frame counter |
+| 9      | 8    | `receiverTimestampUs`  | u64   | receiver local timestamp at capture |
+| 17     | 4    | `transmitterId`        | u32   | stable transmitter identifier, never a raw MAC |
+| 21     | 4    | `transmitterBootId`    | u32   | transmitter boot/session identifier |
+| 25     | 4    | `transmitterPacketSeq` | u32   | shared packet sequence observed by all receivers |
+| 29     | 1    | `rssi`                 | i8    | dBm |
+| 30     | 1    | `noiseFloor`           | i8    | dBm, 0 when unavailable |
+| 31     | 1    | `channel`              | u8    | primary channel |
+| 32     | 1    | `bandwidthMhz`         | u8    | currently 20 or 40 |
+| 33     | 1    | `firstWordInvalid`     | u8    | 1 = drop first 4 CSI bytes when processing |
+| 34     | 2    | `csiLen`               | u16   | number of raw CSI bytes that follow |
+| 36     | 3    | `reserved`             | u8[3] | 0 |
+| 39     | csiLen | `csi`                | i8[]  | raw signed I/Q values |
+
+### v2 trailer — 4 bytes
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `crc32` | u32 | IEEE 802.3 CRC32 over bytes `[0, 39 + csiLen)` |
+
+## v2 alignment rules
+
+- Receiver identity comes from configured receiver source mapping, not from a raw MAC inside the
+  frame.
+- Four observations for the same transmitter packet are normal.
+- Three observations are allowed only as degraded mode and must be reflected in uncertainty.
+- Two or fewer observations must not produce an accepted XY estimate.
+- Asynchronous receiver windows must never be treated as one observation.

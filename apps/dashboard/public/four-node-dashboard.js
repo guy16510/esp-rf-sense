@@ -304,9 +304,9 @@ async function trainPositionModel() {
       step: 32,
       minRecordingsPerClass: 2,
     });
-    get('modelStatus').textContent = `Loaded position model with ${(positionState.model.classes || []).length} classes from ${positionState.model.recordings || 0} recordings.`;
+    get('modelStatus').textContent = `Loaded coarse-zone model with ${(positionState.model.classes || []).length} classes from ${positionState.model.recordings || 0} recordings.`;
     get('modelBadge').className = 'badge ready';
-    get('modelBadge').textContent = 'Position model loaded';
+    get('modelBadge').textContent = 'Coarse zones loaded';
   } catch (error) {
     get('modelStatus').textContent = error.message;
     get('modelBadge').className = 'badge issue';

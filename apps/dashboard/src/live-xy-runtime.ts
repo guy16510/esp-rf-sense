@@ -46,7 +46,7 @@ export class LiveXYRuntime {
       transmitterBootId: String(frame.transmitterBootId),
       transmitterPacketSeq: frame.transmitterPacketSeq,
       rssi: frame.rssi,
-      noiseFloor: frame.noiseFloor,
+      ...(frame.noiseFloor !== undefined ? { noiseFloor: frame.noiseFloor } : {}),
       channel: frame.channel,
       bandwidthMhz: frame.bandwidthMhz,
       firstWordInvalid: frame.firstWordInvalid,

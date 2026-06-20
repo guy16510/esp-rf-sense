@@ -1,4 +1,5 @@
 import { createSocket } from 'node:dgram';
+import { access } from 'node:fs/promises';
 
 import { CONTINUOUS_XY_MODEL_FORMAT, loadContinuousXYModel, type ContinuousXYModel } from './continuous-xy-model.js';
 import { DashboardRecorder } from './dashboard-recorder.js';
@@ -34,7 +35,9 @@ const requiredNodeCount = Math.max(1, numberFlag('required-nodes', 4));
 const minFrameRateHz = Math.max(0, numberFlag('min-frame-rate', 5));
 const recordingsDir = values.get('recordings-dir') ?? 'recordings/dashboard';
 const modelPath = values.get('model') ?? values.get('model-path') ?? 'models/dashboard-labels.json';
-const loadedModel = values.has('model') ? await loadDashboardCliModel(modelPath) : undefined;
+const loadedModel = values.has('no-model')
+  ? undefined
+  : await loadDashboardCliModelIfPresent(modelPath, values.has('model') || values.has('model-path'));
 const defaultSlotDeviceIds = ['2f4b47f0', '2f4b5390', '2f4b735c', '2f77883c'];
 const slotDeviceIds = ['a', 'b', 'c', 'd'].map((slot, index) =>
   (
@@ -179,6 +182,19 @@ async function loadDashboardCliModel(path: string): Promise<DashboardCliModel> {
     return { kind: 'continuous-xy', model: await loadContinuousXYModel(path) };
   }
   return { kind: 'portable', model: await loadPortableModel(path) };
+}
+
+async function loadDashboardCliModelIfPresent(
+  path: string,
+  required: boolean,
+): Promise<DashboardCliModel | undefined> {
+  try {
+    await access(path);
+  } catch (error) {
+    if (required) throw error;
+    return undefined;
+  }
+  return loadDashboardCliModel(path);
 }
 
 function isProtocolV2(message: Buffer): boolean {

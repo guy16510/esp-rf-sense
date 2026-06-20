@@ -44,9 +44,9 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Protocol and packet alignment
-        run: npx vitest run apps/dashboard/src/protocol-v2.test.ts apps/dashboard/src/joint-packet-aligner.test.ts --reporter=verbose
+        run: npx vitest run apps/dashboard/src/protocol-v2.test.ts apps/dashboard/src/joint-packet-aligner.test.ts apps/dashboard/src/joint-xy-features.test.ts --reporter=verbose
       - name: Train and validate continuous XY
-        run: npx vitest run apps/dashboard/src/simulated-xy-pipeline.test.ts --reporter=verbose
+        run: npx vitest run apps/dashboard/src/continuous-xy-model.test.ts apps/dashboard/src/live-xy-runtime.test.ts apps/dashboard/src/live-xy-dashboard.test.ts apps/dashboard/src/simulated-xy-pipeline.test.ts --reporter=verbose
 
   python-analysis:
     name: python analysis (3.12)

@@ -78,10 +78,10 @@ npm run hardware:check-position -- --expected center --x-meters 2 --y-meters 2 -
 
 The output is a calibrated coarse-zone coordinate. It is not true continuous XY interpolation.
 
-## Continuous XY blocker
+## Continuous XY validation requirement
 
-The production firmware currently emits protocol v1 (`RFCS`) with per-device packet sequence and
-controlled-mode `pingSeq`. The TypeScript continuous-XY runtime expects protocol v2 (`RFV2`) with a
-shared transmitter packet identity. Do not label the coarse-zone classifier as continuous XY until
-physical firmware emits a shared transmitter packet identifier that lets four receiver observations
-join without timestamp guessing.
+Continuous XY requires protocol v2 (`RFV2`) recordings with shared
+`transmitterId`, `transmitterBootId`, and `transmitterPacketSeq` across the four receivers. The
+dashboard may load coarse-zone models for diagnostics, but `/api/meta` must keep
+`validatedContinuousXY: false` until a recorded held-out dataset passes the localization gates and
+uploads the validation artifact.

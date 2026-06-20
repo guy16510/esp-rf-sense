@@ -43,12 +43,16 @@ jobs:
           npx vitest run \
             apps/dashboard/src/protocol-v2.test.ts \
             apps/dashboard/src/joint-packet-aligner.test.ts \
+            apps/dashboard/src/joint-xy-features.test.ts \
             --reporter=verbose \
             2>&1 | tee artifacts/localization/protocol-and-alignment.log
 
-      - name: Train and validate synthetic XY model
+      - name: Train and validate XY models
         run: |
           npx vitest run \
+            apps/dashboard/src/continuous-xy-model.test.ts \
+            apps/dashboard/src/live-xy-runtime.test.ts \
+            apps/dashboard/src/live-xy-dashboard.test.ts \
             apps/dashboard/src/simulated-xy-pipeline.test.ts \
             --reporter=verbose \
             2>&1 | tee artifacts/localization/synthetic-xy.log
@@ -70,7 +74,8 @@ jobs:
             "workflow": "localization-gate",
             "syntheticValidationOnly": true,
             "hardwareValidated": false,
-            "claimAllowed": "Synthetic four-receiver XY pipeline passes CI. Real-room XY reliability is not established until recorded multi-day hardware datasets pass the same promotion gates."
+            "validatedContinuousXY": false,
+            "claimAllowed": "Software contract tests pass, including protocol-v2 alignment, shared feature parity, continuous model rejection, and runtime publication. Real-room continuous XY must remain unvalidated until recorded multi-day hardware datasets pass the promotion gates."
           }
           JSON
 
