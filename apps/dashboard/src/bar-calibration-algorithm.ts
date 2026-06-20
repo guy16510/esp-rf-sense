@@ -62,7 +62,9 @@ export function recommendRecaptures(
   const pairs = new Map<string, { left: string; right: string; count: number }>();
   for (const cell of cells) {
     if (cell.actual === cell.predicted || cell.count < minimumCount) continue;
-    const [left, right] = [cell.actual, cell.predicted].sort();
+    const labels = [cell.actual, cell.predicted].sort();
+    const left = labels[0]!;
+    const right = labels[1]!;
     const key = `${left}|${right}`;
     const prior = pairs.get(key);
     if (prior) prior.count += cell.count;
