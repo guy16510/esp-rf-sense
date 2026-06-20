@@ -4,10 +4,9 @@ import { access } from 'node:fs/promises';
 import { CONTINUOUS_XY_MODEL_FORMAT, loadContinuousXYModel, type ContinuousXYModel } from './continuous-xy-model.js';
 import { DashboardRecorder } from './dashboard-recorder.js';
 import { loadPortableModel } from './model.js';
-import { MultiNodeEngine } from './multi-node-engine.js';
 import { MultiNodeDashboardServer } from './multi-node-web-server.js';
 import { JointPositionEngine } from './joint-position-engine.js';
-import { LiveXYRuntime, type ReceiverSourceMapping } from './live-xy-runtime.js';
+import type { ReceiverSourceMapping } from './live-xy-runtime.js';
 import { parseDatagram } from './protocol.js';
 import { decodeCsiFrameV2 } from './protocol-v2.js';
 
@@ -48,36 +47,22 @@ const slotDeviceIds = ['a', 'b', 'c', 'd'].map((slot, index) =>
 );
 const continuousModel = loadedModel?.kind === 'continuous-xy' ? loadedModel.model : undefined;
 const portableModel = loadedModel?.kind === 'portable' ? loadedModel.model : undefined;
-const engine = continuousModel
-  ? new JointPositionEngine(
-      {
-        requiredNodeCount,
-        minFrameRateHz,
-        windowFrames: Math.max(8, numberFlag('window', 64)),
-      },
-      continuousModel.room.widthMeters,
-      continuousModel.room.heightMeters,
-    )
-  : new MultiNodeEngine({
-  requiredNodeCount,
-  minFrameRateHz,
-  windowFrames: Math.max(8, numberFlag('window', 64)),
-  ...(portableModel ? { model: portableModel } : {}),
-});
+const engine = new JointPositionEngine(
+  {
+    requiredNodeCount,
+    minFrameRateHz,
+    windowFrames: Math.max(8, numberFlag('window', 64)),
+    ...(portableModel ? { model: portableModel } : {}),
+  },
+  continuousModel?.room.widthMeters ?? 4,
+  continuousModel?.room.heightMeters ?? 4,
+);
 const receiverMappings: ReceiverSourceMapping[] = ['a', 'b', 'c', 'd'].map((slot, index) => ({
   slot: slot.toUpperCase() as ReceiverSourceMapping['slot'],
   deviceId: slotDeviceIds[index]!,
   ...(values.get(`slot-${slot}-address`) ? { address: values.get(`slot-${slot}-address`)! } : {}),
   ...(values.get(`slot-${slot}-port`) ? { port: numberFlag(`slot-${slot}-port`, 0) } : {}),
 }));
-const xyRuntime = continuousModel
-  ? new LiveXYRuntime(continuousModel, receiverMappings, {
-      windowPackets: Math.max(4, numberFlag('xy-window-packets', 24)),
-      onPrediction: (prediction) => {
-        if (engine instanceof JointPositionEngine) engine.setJointPrediction(prediction);
-      },
-    })
-  : null;
 const recorder = new DashboardRecorder(recordingsDir);
 const dashboard = new MultiNodeDashboardServer(engine, {
   host: httpHost,
@@ -87,6 +72,13 @@ const dashboard = new MultiNodeDashboardServer(engine, {
   recordingsDir,
   modelPath,
   slotDeviceIds,
+  receiverMappings,
+  ...(continuousModel
+    ? {
+        continuousXYModel: continuousModel,
+        continuousXYWindowPackets: Math.max(4, numberFlag('xy-window-packets', 24)),
+      }
+    : {}),
   ...(loadedModel
     ? {
         model: {
@@ -108,9 +100,9 @@ const dashboard = new MultiNodeDashboardServer(engine, {
 const socket = createSocket({ type: 'udp4', reuseAddr: true });
 
 socket.on('message', (message, remote) => {
-  if (xyRuntime && isProtocolV2(message)) {
+  if (isProtocolV2(message)) {
     const receivedAt = Date.now();
-    const predictions = xyRuntime.acceptDatagram(
+    const predictions = dashboard.acceptProtocolV2Datagram(
       message,
       { address: remote.address, port: remote.port },
       receivedAt,
@@ -150,7 +142,7 @@ console.error(`[four-node] slots A-D ${slotDeviceIds.join(', ')}`);
 console.error(
   `[four-node] model ${loadedModel ? `loaded ${modelPath} (${loadedModel.kind})` : `not loaded; train to ${modelPath}`}`,
 );
-if (xyRuntime) {
+if (continuousModel) {
   console.error(
     `[four-node] continuous XY source mappings ${receiverMappings
       .map((item) => `${item.slot}:${item.address ?? '*'}:${item.port ?? '*'}`)

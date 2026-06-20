@@ -54,6 +54,8 @@ describe('four-node dashboard UI', () => {
     expect(script).toContain("import './dashboard-stream.js'");
     expect(script).toContain("import './four-node-dashboard-core.js'");
     expect(script).toContain("import './room-d3.js'");
+    expect(script).toContain("target: 'continuous-xy'");
+    expect(script).not.toContain("target: 'position',\n      window: 64");
 
     const streamResponse = await fetch(`http://127.0.0.1:${port}/dashboard-stream.js`);
     const stream = await streamResponse.text();
