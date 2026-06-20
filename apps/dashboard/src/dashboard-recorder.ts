@@ -1,7 +1,9 @@
+import { createHash } from 'node:crypto';
 import { createWriteStream, type WriteStream } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
+import { captureQuality } from './bar-calibration-algorithm.js';
 import type { CsiDatagram } from './protocol.js';
 import type { CsiFrameV2 } from './protocol-v2.js';
 
@@ -16,6 +18,11 @@ export interface RecordingStatus {
   elapsedSeconds: number;
   progress: number;
   autoStopReady: boolean;
+  adaptiveStopReady: boolean;
+  qualityScore: number;
+  qualityReasons: string[];
+  uniqueBuckets: number;
+  receiverCount: number;
   datagrams: number;
   frames: number;
   bytes: number;
@@ -60,6 +67,10 @@ interface RecordingMeta extends SupplementalMetadata {
     bytes: number;
     targetSeconds: number;
     targetFrames: number;
+    adaptiveStopReady: boolean;
+    qualityScore: number;
+    uniqueBuckets: number;
+    receiverCount: number;
   };
 }
 
@@ -74,25 +85,9 @@ export class DashboardRecorder {
   private bin: WriteStream | null = null;
   private jsonl: WriteStream | null = null;
   private supplementalMetadata: SupplementalMetadata = {};
-  private statusValue: RecordingStatus = {
-    active: false,
-    label: null,
-    name: null,
-    startedAt: null,
-    finishedAt: null,
-    targetSeconds: 0,
-    targetFrames: 0,
-    elapsedSeconds: 0,
-    progress: 0,
-    autoStopReady: false,
-    datagrams: 0,
-    frames: 0,
-    bytes: 0,
-    binPath: null,
-    jsonlPath: null,
-    metaPath: null,
-    error: null,
-  };
+  private readonly diversityBuckets = new Set<string>();
+  private readonly receivers = new Set<string>();
+  private statusValue: RecordingStatus = emptyStatus();
   private readonly lenPrefix = Buffer.alloc(4);
 
   constructor(private readonly outDir = 'recordings/dashboard') {}
@@ -106,14 +101,27 @@ export class DashboardRecorder {
         this.statusValue.targetFrames > 0
           ? this.statusValue.frames / this.statusValue.targetFrames
           : 0;
+      const quality = captureQuality({
+        elapsedSeconds: elapsed,
+        frames: this.statusValue.frames,
+        receiverCount: this.receivers.size,
+        uniqueBuckets: this.diversityBuckets.size,
+        invalidFraction: 0,
+      });
       this.statusValue.elapsedSeconds = Number(elapsed.toFixed(1));
       this.statusValue.progress = Math.max(0, Math.min(1, Math.min(timeProgress, frameProgress)));
+      this.statusValue.adaptiveStopReady = quality.stop;
+      this.statusValue.qualityScore = Number(quality.score.toFixed(4));
+      this.statusValue.qualityReasons = quality.reasons;
+      this.statusValue.uniqueBuckets = this.diversityBuckets.size;
+      this.statusValue.receiverCount = this.receivers.size;
       this.statusValue.autoStopReady =
-        this.statusValue.targetSeconds > 0 &&
-        elapsed >= this.statusValue.targetSeconds &&
-        this.statusValue.frames >= this.statusValue.targetFrames;
+        quality.stop ||
+        (this.statusValue.targetSeconds > 0 &&
+          elapsed >= this.statusValue.targetSeconds &&
+          this.statusValue.frames >= this.statusValue.targetFrames);
     }
-    return { ...this.statusValue };
+    return { ...this.statusValue, qualityReasons: [...this.statusValue.qualityReasons] };
   }
 
   async start(label: string, targetSeconds = 90, targetFrames = 2000): Promise<RecordingStatus> {
@@ -121,6 +129,8 @@ export class DashboardRecorder {
     const request = decodeRecordingRequest(label);
     const cleanLabel = sanitizeLabel(request.label);
     this.supplementalMetadata = request.metadata;
+    this.diversityBuckets.clear();
+    this.receivers.clear();
     const safeTargetSeconds = boundedInt(targetSeconds, 5, 3600);
     const safeTargetFrames = boundedInt(targetFrames, 1, 1_000_000);
     const stamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -132,23 +142,16 @@ export class DashboardRecorder {
     this.bin = createWriteStream(binPath);
     this.jsonl = createWriteStream(jsonlPath);
     this.statusValue = {
+      ...emptyStatus(),
       active: true,
       label: cleanLabel,
       name,
       startedAt: new Date().toISOString(),
-      finishedAt: null,
       targetSeconds: safeTargetSeconds,
       targetFrames: safeTargetFrames,
-      elapsedSeconds: 0,
-      progress: 0,
-      autoStopReady: false,
-      datagrams: 0,
-      frames: 0,
-      bytes: 0,
       binPath,
       jsonlPath,
       metaPath,
-      error: null,
     };
     await this.flushMeta(false);
     return this.status();
@@ -159,20 +162,25 @@ export class DashboardRecorder {
     this.lenPrefix.writeUInt32LE(raw.length, 0);
     this.bin.write(Buffer.from(this.lenPrefix));
     this.bin.write(raw);
+    const receiver = (datagram.header.deviceId >>> 0).toString(16).padStart(8, '0');
+    this.receivers.add(receiver);
     const line = {
       recvUnixMs,
       deviceId: datagram.header.deviceId,
       bootId: datagram.header.bootId,
       packetSeq: datagram.header.packetSeq,
       flags: datagram.header.flags,
-      frames: datagram.frames.map((frame) => ({
-        frameSeq: frame.frameSeq,
-        timestampUs: frame.timestampUs,
-        rssi: frame.rssi,
-        firstWordInvalid: frame.firstWordInvalid,
-        csiLen: frame.csi.length,
-        csiBase64: frame.csi.toString('base64'),
-      })),
+      frames: datagram.frames.map((frame) => {
+        this.diversityBuckets.add(diversityBucket(receiver, frame.rssi, frame.csi));
+        return {
+          frameSeq: frame.frameSeq,
+          timestampUs: frame.timestampUs,
+          rssi: frame.rssi,
+          firstWordInvalid: frame.firstWordInvalid,
+          csiLen: frame.csi.length,
+          csiBase64: frame.csi.toString('base64'),
+        };
+      }),
     };
     this.jsonl.write(`${JSON.stringify(line)}\n`);
     this.statusValue.datagrams++;
@@ -180,11 +188,19 @@ export class DashboardRecorder {
     this.statusValue.bytes += raw.length;
   }
 
-  writeProtocolV2(raw: Buffer, frame: CsiFrameV2, source: { address: string; port: number }, recvUnixMs: number): void {
+  writeProtocolV2(
+    raw: Buffer,
+    frame: CsiFrameV2,
+    source: { address: string; port: number },
+    recvUnixMs: number,
+  ): void {
     if (!this.bin || !this.jsonl || !this.statusValue.active) return;
     this.lenPrefix.writeUInt32LE(raw.length, 0);
     this.bin.write(Buffer.from(this.lenPrefix));
     this.bin.write(raw);
+    const receiver = `${source.address}:${source.port}`;
+    this.receivers.add(receiver);
+    this.diversityBuckets.add(diversityBucket(receiver, frame.rssi, frame.csi));
     this.jsonl.write(
       `${JSON.stringify({
         protocolVersion: 2,
@@ -249,6 +265,10 @@ export class DashboardRecorder {
         bytes: this.statusValue.bytes,
         targetSeconds: this.statusValue.targetSeconds,
         targetFrames: this.statusValue.targetFrames,
+        adaptiveStopReady: this.statusValue.adaptiveStopReady,
+        qualityScore: this.statusValue.qualityScore,
+        uniqueBuckets: this.statusValue.uniqueBuckets,
+        receiverCount: this.statusValue.receiverCount,
       },
     };
     await mkdir(dirname(this.statusValue.metaPath), { recursive: true });
@@ -256,115 +276,69 @@ export class DashboardRecorder {
   }
 }
 
+function emptyStatus(): RecordingStatus {
+  return {
+    active: false,
+    label: null,
+    name: null,
+    startedAt: null,
+    finishedAt: null,
+    targetSeconds: 0,
+    targetFrames: 0,
+    elapsedSeconds: 0,
+    progress: 0,
+    autoStopReady: false,
+    adaptiveStopReady: false,
+    qualityScore: 0,
+    qualityReasons: [],
+    uniqueBuckets: 0,
+    receiverCount: 0,
+    datagrams: 0,
+    frames: 0,
+    bytes: 0,
+    binPath: null,
+    jsonlPath: null,
+    metaPath: null,
+    error: null,
+  };
+}
+
+function diversityBucket(receiver: string, rssi: number, csi: Buffer): string {
+  const digest = createHash('sha1').update(csi.subarray(0, 32)).digest('hex').slice(0, 6);
+  return `${receiver}:${Math.round(rssi / 3)}:${digest}`;
+}
+
 function decodeRecordingRequest(value: string): DecodedRecordingRequest {
   if (!value.startsWith(METADATA_PREFIX)) return { label: value, metadata: {} };
+  const encoded = value.slice(METADATA_PREFIX.length);
   try {
-    const decoded = JSON.parse(
-      Buffer.from(value.slice(METADATA_PREFIX.length), 'base64url').toString('utf8'),
-    ) as Record<string, unknown>;
-    const label = requiredText(decoded.label, 'recording label');
-    const target =
-      decoded.target === 'continuous-xy'
-        ? 'continuous-xy'
-        : decoded.target === 'position'
-          ? 'position'
-          : decoded.target === 'label'
-            ? 'label'
-            : undefined;
-    const subjectId = optionalText(decoded.subjectId);
-    const day = optionalText(decoded.day);
-    const movement = optionalText(decoded.movement);
-    const recordingId = optionalText(decoded.recordingId);
-    const orientationDegrees = optionalNumber(decoded.orientationDegrees);
-    const xMeters = optionalNumber(decoded.xMeters);
-    const yMeters = optionalNumber(decoded.yMeters);
-    const zoneAnnotation = optionalText(decoded.zoneAnnotation);
-    const position = decodePosition(decoded.position);
-    if (target === 'continuous-xy') {
-      if ((xMeters === undefined) !== (yMeters === undefined)) {
-        throw new Error('continuous XY xMeters and yMeters must both be set or both omitted for empty-room recordings');
-      }
-      if (xMeters !== undefined && (xMeters < 0 || yMeters === undefined || yMeters < 0)) {
-        throw new Error('continuous XY coordinates must be non-negative meters');
-      }
-    }
-    return {
-      label,
-      metadata: {
-        ...(target ? { target } : {}),
-        ...(subjectId ? { subjectId } : {}),
-        ...(day ? { day } : {}),
-        ...(movement ? { movement } : {}),
-        ...(recordingId ? { recordingId } : {}),
-        ...(orientationDegrees !== undefined ? { orientationDegrees } : {}),
-        ...(xMeters !== undefined ? { xMeters } : {}),
-        ...(yMeters !== undefined ? { yMeters } : {}),
-        ...(zoneAnnotation ? { zoneAnnotation } : {}),
-        ...(position ? { position } : {}),
-      },
+    const parsed = JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8')) as SupplementalMetadata & {
+      label?: string;
     };
+    const label = String(parsed.label ?? '').trim();
+    if (!label) throw new Error('metadata label is required');
+    const { label: _label, ...metadata } = parsed;
+    return { label, metadata };
   } catch (error) {
-    throw new Error(
-      `invalid recording metadata: ${error instanceof Error ? error.message : String(error)}`,
-    );
+    throw new Error(`invalid recording metadata: ${(error as Error).message}`);
   }
 }
 
-function decodePosition(value: unknown): PositionMetadata | undefined {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
-  const record = value as Record<string, unknown>;
-  const label = requiredText(record.label, 'position label');
-  const x = nullableNumber(record.x);
-  const y = nullableNumber(record.y);
-  if ((x === null) !== (y === null)) throw new Error('position x and y must both be set or both be null');
-  if (x !== null && (x < 0 || x > 1 || y === null || y < 0 || y > 1)) {
-    throw new Error('position x and y must be normalized values between 0 and 1');
-  }
-  return { label, x, y };
-}
-
-function nullableNumber(value: unknown): number | null {
-  if (value === null || value === undefined || value === '') return null;
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) throw new Error('position coordinates must be finite numbers');
-  return parsed;
-}
-
-function optionalText(value: unknown): string | undefined {
-  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
-}
-
-function optionalNumber(value: unknown): number | undefined {
-  if (value === null || value === undefined || value === '') return undefined;
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) throw new Error('metadata numeric fields must be finite numbers');
-  return parsed;
-}
-
-function requiredText(value: unknown, name: string): string {
-  const result = optionalText(value);
-  if (!result) throw new Error(`${name} is required`);
-  return result;
-}
-
-function boundedInt(value: number, min: number, max: number): number {
-  if (!Number.isFinite(value)) return min;
-  return Math.max(min, Math.min(max, Math.floor(value)));
-}
-
-function sanitizeLabel(label: string): string {
-  const clean = label
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9-]+/g, '-')
-    .replace(/^-+|-+$/g, '');
+function sanitizeLabel(value: string): string {
+  const clean = value.toLowerCase().replace(/[^a-z0-9_-]+/gu, '-').replace(/^-+|-+$/gu, '');
   if (!clean) throw new Error('recording label is required');
-  return clean;
+  return clean.slice(0, 80);
 }
 
-function endStream(stream: WriteStream | null): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (!stream) return resolve();
-    stream.end((error?: Error | null) => (error ? reject(error) : resolve()));
+function boundedInt(value: number, minimum: number, maximum: number): number {
+  const parsed = Math.floor(Number(value));
+  return Number.isFinite(parsed) ? Math.max(minimum, Math.min(maximum, parsed)) : minimum;
+}
+
+async function endStream(stream: WriteStream | null): Promise<void> {
+  if (!stream) return;
+  await new Promise<void>((resolve, reject) => {
+    stream.once('error', reject);
+    stream.end(resolve);
   });
 }
