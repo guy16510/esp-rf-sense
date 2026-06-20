@@ -3,7 +3,7 @@
 Open the dashboard guide at:
 
 ```text
-http://YOUR_DASHBOARD:8080/device-onboarding.html
+http://YOUR_DASHBOARD:8080/fleet?guide=device
 ```
 
 ## First provisioning
