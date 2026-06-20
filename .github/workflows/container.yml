@@ -48,23 +48,41 @@ jobs:
           cleanup() {
             status=$?
             if [ "$status" -ne 0 ]; then
+              echo "Container status:"
+              docker inspect --format '{{json .State}}' rf-sense-test || true
+              echo "Container logs:"
               docker logs rf-sense-test || true
+              echo "Mounted data directory:"
+              find "$data_dir" -maxdepth 2 -print || true
             fi
             docker rm --force rf-sense-test >/dev/null 2>&1 || true
             exit "$status"
           }
           trap cleanup EXIT
 
-          for attempt in $(seq 1 30); do
+          ready=false
+          for attempt in $(seq 1 45); do
+            if ! docker inspect --format '{{.State.Running}}' rf-sense-test | grep -qx true; then
+              echo "Container exited before the dashboard became ready"
+              exit 1
+            fi
             if curl --fail --silent --show-error http://127.0.0.1:18080/api/readiness > readiness.json; then
+              ready=true
               break
             fi
             sleep 2
           done
 
+          if [ "$ready" != true ] || [ ! -s readiness.json ]; then
+            echo "Dashboard readiness endpoint never became available"
+            exit 1
+          fi
+
           curl --fail --silent --show-error http://127.0.0.1:18080/fleet > fleet.html
           grep --quiet "RF-SENSE" fleet.html
-          node -e "const state = require('./readiness.json'); if (typeof state.readyForCapture !== 'boolean') process.exit(1)"
+          node -e "const fs=require('node:fs'); const state=JSON.parse(fs.readFileSync('readiness.json','utf8')); if (typeof state.readyForCapture !== 'boolean') process.exit(1)"
+          docker exec rf-sense-test test -d /data/recordings
+          docker exec rf-sense-test test -d /data/models
           test -d "$data_dir/recordings"
           test -d "$data_dir/models"
 
