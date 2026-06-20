@@ -28,11 +28,14 @@ __pycache__/
 .ruff_cache/
 *.egg-info/
 
-# --- Collector / experiment data (raw recordings are large; keep out of git) ---
-data/
-recordings/
-*.jsonl
-*.csi.bin
+# --- Collector / experiment data ---
+# Training recordings and generated models are intentionally allowed in Git.
+# Keep unrelated runtime data ignored while permitting data/recordings and data/models.
+data/*
+!data/recordings/
+!data/recordings/**
+!data/models/
+!data/models/**
 
 # --- TLS material (never commit private keys/certs) ---
 secrets/
