@@ -13,8 +13,8 @@ export interface RoomSetupZone {
 
 export interface RoomSetupState {
   roomName: string;
-  widthMeters: number;
-  heightMeters: number;
+  widthFeet: number;
+  lengthFeet: number;
   subjectId: string;
   emptyRecordings: number;
   zones: RoomSetupZone[];
@@ -36,8 +36,8 @@ export interface RoomSetupGate {
 export function createDefaultRoomSetup(): RoomSetupState {
   return {
     roomName: 'Tap room',
-    widthMeters: 6,
-    heightMeters: 5,
+    widthFeet: 6,
+    lengthFeet: 5,
     subjectId: 'person-1',
     emptyRecordings: 0,
     zones: [
@@ -45,7 +45,6 @@ export function createDefaultRoomSetup(): RoomSetupState {
       zone('left', 0.2, 0.5),
       zone('center', 0.5, 0.5),
       zone('right', 0.8, 0.5),
-      zone('back', 0.5, 0.85),
     ],
     validation: {},
     modelLoaded: false,
@@ -61,8 +60,7 @@ export function deriveRoomSetupGate(
   const emptyReady = receiverGate && state.emptyRecordings >= 2;
   const capturesReady = emptyReady && zonesComplete(state);
   const modelReady = capturesReady && state.modelLoaded;
-  const validationReady = modelReady && validationsComplete(state);
-  const flags = [roomReady, receiverGate, emptyReady, capturesReady, modelReady, validationReady];
+  const flags = [roomReady, receiverGate, emptyReady, capturesReady, modelReady];
   let maxUnlocked = 0;
   for (let index = 0; index < flags.length - 1; index++) {
     if (!flags[index]) break;
@@ -75,12 +73,10 @@ export function deriveRoomSetupGate(
       : !emptyReady
         ? 'Collect 2 empty-room recordings.'
         : !capturesReady
-          ? 'Record one stationary and one moving session for every zone.'
+          ? 'Record one stationary session for every zone.'
           : !modelReady
             ? 'Train and load the position model.'
-            : !validationReady
-              ? 'Pass the live check for every zone.'
-              : 'Room setup is complete.';
+            : 'Room setup is complete.';
   return {
     completed: flags.filter(Boolean).length,
     maxUnlocked,
@@ -95,22 +91,24 @@ export function buildRoomSetupGeometry(
 ): RoomGeometry {
   if (!roomDefinitionValid(state)) throw new Error('room setup is incomplete');
   if (receivers.length !== 4) throw new Error('exactly four receivers are required');
+  const widthMeters = feetToMeters(state.widthFeet);
+  const heightMeters = feetToMeters(state.lengthFeet);
   const points = [
     { slot: 'A' as const, x: 0, y: 0 },
-    { slot: 'B' as const, x: state.widthMeters, y: 0 },
-    { slot: 'C' as const, x: 0, y: state.heightMeters },
-    { slot: 'D' as const, x: state.widthMeters, y: state.heightMeters },
+    { slot: 'B' as const, x: widthMeters, y: 0 },
+    { slot: 'C' as const, x: 0, y: heightMeters },
+    { slot: 'D' as const, x: widthMeters, y: heightMeters },
   ];
   return {
     format: 'rfsense-room-geometry/1',
     room: {
       name: state.roomName.trim(),
-      widthMeters: state.widthMeters,
-      heightMeters: state.heightMeters,
+      widthMeters,
+      heightMeters,
     },
     transmitter: {
       name: 'room-router',
-      x: state.widthMeters / 2,
+      x: widthMeters / 2,
       y: 0,
     },
     receivers: points.map((point, index) => ({
@@ -121,7 +119,7 @@ export function buildRoomSetupGeometry(
     zones: Object.fromEntries(
       state.zones.map((item) => [
         item.label,
-        { x: item.x * state.widthMeters, y: item.y * state.heightMeters },
+        { x: item.x * widthMeters, y: item.y * heightMeters },
       ]),
     ),
   };
@@ -131,10 +129,10 @@ export function roomDefinitionValid(state: RoomSetupState): boolean {
   return Boolean(
     state.roomName.trim() &&
       state.subjectId.trim() &&
-      Number.isFinite(state.widthMeters) &&
-      state.widthMeters > 0 &&
-      Number.isFinite(state.heightMeters) &&
-      state.heightMeters > 0 &&
+      Number.isFinite(state.widthFeet) &&
+      state.widthFeet > 0 &&
+      Number.isFinite(state.lengthFeet) &&
+      state.lengthFeet > 0 &&
       state.zones.length >= 2 &&
       state.zones.every(
         (item) =>
@@ -153,12 +151,16 @@ export function roomDefinitionValid(state: RoomSetupState): boolean {
 export function zonesComplete(state: RoomSetupState): boolean {
   return (
     state.zones.length >= 2 &&
-    state.zones.every((item) => item.captures.stationary >= 1 && item.captures.moving >= 1)
+    state.zones.every((item) => item.captures.stationary >= 1)
   );
 }
 
 export function validationsComplete(state: RoomSetupState): boolean {
   return state.zones.length >= 2 && state.zones.every((item) => state.validation[item.id] === true);
+}
+
+function feetToMeters(value: number): number {
+  return Number((value * 0.3048).toFixed(4));
 }
 
 function zone(label: string, x: number, y: number): RoomSetupZone {

@@ -19,7 +19,7 @@
       .room-setup-header h2 { margin:4px 0 6px; font-size:24px }
       .room-setup-header p { margin:0; color:#8ca3aa }
       .room-setup-close { width:40px; height:40px; border-radius:10px; font-size:25px }
-      .room-setup-steps { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:8px; padding:18px 28px; border-bottom:1px solid rgba(148,163,184,.1) }
+      .room-setup-steps { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:8px; padding:18px 28px; border-bottom:1px solid rgba(148,163,184,.1) }
       .room-setup-steps button { display:grid; justify-items:start; gap:6px; padding:10px; border:1px solid rgba(148,163,184,.12); border-radius:10px; background:rgba(15,23,42,.36); color:#8ca3aa; text-align:left }
       .room-setup-steps button b { display:grid; place-items:center; width:22px; height:22px; border-radius:50%; background:rgba(148,163,184,.14); color:#cbd5e1; font-size:11px }
       .room-setup-steps button.active { border-color:rgba(45,212,191,.45); color:#e6fffb; background:rgba(13,148,136,.12) }
@@ -40,8 +40,23 @@
       .setup-receiver small, .setup-zone small, .setup-validation small, .setup-note { color:#8ca3aa }
       .setup-zone header label { flex:1 }
       .setup-coordinates, .setup-captures { display:grid; grid-template-columns:1fr 1fr; gap:8px }
+      .setup-move-controls { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:6px }
+      .setup-move-controls button { padding:8px 6px; border-radius:8px }
       .setup-captures button { display:grid; gap:3px; padding:10px; border-radius:9px; text-align:left }
       .setup-captures span { color:#8ca3aa; font-size:10px }
+      .setup-zone-map { display:block; width:100%; min-height:300px; border:1px solid rgba(148,163,184,.16); border-radius:12px; background:#030c11; touch-action:none; user-select:none }
+      .setup-zone-map * { touch-action:none; user-select:none }
+      .setup-zone-map .room { fill:rgba(15,23,42,.55); stroke:rgba(148,163,184,.36); stroke-width:2 }
+      .setup-zone-map .grid { stroke:rgba(148,163,184,.08); stroke-width:1 }
+      .setup-zone-map .receiver { fill:rgba(0,215,255,.16); stroke:#2dd4bf; stroke-width:2 }
+      .setup-zone-map .router { fill:rgba(251,191,36,.18); stroke:#fbbf24; stroke-width:2 }
+      .setup-zone-map .stand { fill:#14b8a6; stroke:#ccfbf1; stroke-width:2 }
+      .setup-zone-map [data-zone-marker] { cursor:grab }
+      .setup-zone-map [data-zone-marker]:active { cursor:grabbing }
+      .setup-zone-map .complete { fill:#22c55e }
+      .setup-zone-map text { fill:#e5f6f3; font-size:13px; font-weight:800 }
+      .setup-zone-map .hint { fill:#8ca3aa; font-size:11px; font-weight:600 }
+      .setup-location { margin:0; color:#cbd5e1; font-size:12px }
       .setup-progress-card, .setup-recording { display:grid; gap:10px; padding:14px; border:1px solid rgba(148,163,184,.14); border-radius:12px }
       .setup-progress-card>div:first-child, .setup-recording>div:first-child { display:flex; justify-content:space-between; gap:12px }
       .setup-progress { height:8px; overflow:hidden; border-radius:999px; background:rgba(148,163,184,.12) }
@@ -69,7 +84,7 @@
         <p>Each receiver is shown independently, with fused activity kept separate.</p>
       </div>
       <div class="topbar-status" aria-live="polite">
-        <button id="roomSetupLaunch" class="room-setup-launch" type="button"><span>Set up room</span><small>0 of 6 complete</small></button>
+        <button id="roomSetupLaunch" class="room-setup-launch" type="button"><span>Set up room</span><small>0 of 5 complete</small></button>
         <span class="status-pill"><i id="streamDot"></i><span id="streamStatus">Connecting</span></span>
         <span id="fleetStatus" class="status-pill">0 / 4 ready</span>
       </div>
@@ -175,19 +190,18 @@
     <script type="module">
       const KEY = 'rfsense-room-setup/v1';
       const PREFIX = 'rfsense-meta:';
-      const STEPS = ['Room', 'Receivers', 'Empty baseline', 'Zones', 'Train', 'Validate'];
-      const REQUIRED_MATCHES = 15;
+      const STEPS = ['Room', 'Receivers', 'Empty baseline', 'Zones', 'Train'];
       const defaults = () => ({
         version: 1,
         step: 0,
         roomName: 'Tap room',
-        widthMeters: 6,
-        heightMeters: 5,
+        widthFeet: 6,
+        lengthFeet: 5,
         subjectId: 'person-1',
         emptyRecordings: 0,
         completedRecordingNames: [],
         zones: [
-          ['door', .5, .12], ['left', .2, .5], ['center', .5, .5], ['right', .8, .5], ['back', .5, .85],
+          ['door', .5, .12], ['left', .2, .5], ['center', .5, .5], ['right', .8, .5],
         ].map(([label, x, y]) => ({ id: label, label, x, y, stationary: 0, moving: 0 })),
         validation: {},
         complete: false,
@@ -195,14 +209,50 @@
       const load = () => {
         try {
           const saved = JSON.parse(localStorage.getItem(KEY) || 'null');
-          return saved?.version === 1 && Array.isArray(saved.zones) ? { ...defaults(), ...saved } : defaults();
+          if (saved?.version !== 1 || !Array.isArray(saved.zones)) return defaults();
+          const value = { ...defaults(), ...saved };
+          value.widthFeet = Number(value.widthFeet ?? value.widthMeters ?? defaults().widthFeet);
+          value.lengthFeet = Number(value.lengthFeet ?? value.heightFeet ?? value.heightMeters ?? defaults().lengthFeet);
+          delete value.widthMeters;
+          delete value.heightFeet;
+          delete value.heightMeters;
+          return value;
         } catch { return defaults(); }
       };
       const state = { config: load(), snapshot: null, recording: null, model: null, activeCapture: null, activeValidation: null, message: '' };
       const byId = (id) => document.getElementById(id);
       const clamp = (value) => Math.max(0, Math.min(1, Number(value) || 0));
+      const feetToMeters = (value) => Number((Number(value) * 0.3048).toFixed(4));
+      const feetLabel = (value) => {
+        const inches = Math.max(0, Math.round(Number(value || 0) * 12));
+        const feet = Math.floor(inches / 12);
+        const rest = inches % 12;
+        return `${feet}'${rest ? ` ${rest}"` : ''}`;
+      };
       const esc = (value) => String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
       const save = () => localStorage.setItem(KEY, JSON.stringify(state.config));
+      let dragActive = false;
+      const setupIsEditing = () => {
+        const active = document.activeElement;
+        return dragActive || Boolean(active && byId('roomSetupContent').contains(active) && active.matches('input,select,textarea'));
+      };
+      const renderWhenIdle = () => { if (!setupIsEditing()) render(); };
+      const updateSetupField = (target) => {
+        if (target.dataset.field) {
+          state.config[target.dataset.field] = ['widthFeet','lengthFeet'].includes(target.dataset.field) ? Number(target.value) : target.value.trim();
+        }
+        if (target.dataset.zoneField) {
+          const zone = state.config.zones.find((z) => z.id === target.dataset.zone);
+          if (!zone) return false;
+          const field = target.dataset.zoneField;
+          zone[field] = ['x','y'].includes(field) ? clamp(target.value) : target.value.trim().toLowerCase().replace(/[^a-z0-9-]+/g,'-');
+          state.config.validation[zone.id] = false;
+        }
+        if (!target.dataset.field && !target.dataset.zoneField) return false;
+        state.config.complete = false;
+        save();
+        return true;
+      };
       const request = async (url, body) => {
         const response = await fetch(url, body === undefined ? undefined : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
         const value = await response.json();
@@ -215,18 +265,17 @@
         for (const byte of bytes) binary += String.fromCharCode(byte);
         return PREFIX + btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
       };
-      const roomValid = () => Boolean(state.config.roomName.trim() && state.config.subjectId.trim() && state.config.widthMeters > 0 && state.config.heightMeters > 0 && state.config.zones.length >= 2 && new Set(state.config.zones.map((z) => z.label)).size === state.config.zones.length);
-      const zonesReady = () => state.config.zones.every((z) => z.stationary >= 1 && z.moving >= 1);
-      const validated = () => state.config.zones.every((z) => state.config.validation[z.id]);
+      const roomValid = () => Boolean(state.config.roomName.trim() && state.config.subjectId.trim() && state.config.widthFeet > 0 && state.config.lengthFeet > 0 && state.config.zones.length >= 2 && new Set(state.config.zones.map((z) => z.label)).size === state.config.zones.length);
+      const trainingZones = () => state.config.zones.filter((z) => z.stationary >= 1);
+      const zonesReady = () => trainingZones().length >= 2;
       const gates = () => {
-        const flags = [roomValid(), roomValid() && Boolean(state.snapshot?.readiness?.readyForCapture), false, false, false, false];
+        const flags = [roomValid(), roomValid() && Boolean(state.snapshot?.readiness?.readyForCapture), false, false, false];
         flags[2] = flags[1] && state.config.emptyRecordings >= 2;
         flags[3] = flags[2] && zonesReady();
         flags[4] = flags[3] && Boolean(state.model?.loaded && state.model?.target === 'position');
-        flags[5] = flags[4] && validated();
         let max = 0;
-        for (let i = 0; i < 5 && flags[i]; i += 1) max = i + 1;
-        const blocker = !flags[0] ? 'Enter a room name, dimensions, and person ID.' : !flags[1] ? 'All four receivers must be healthy before capture.' : !flags[2] ? 'Collect two empty-room recordings.' : !flags[3] ? 'Record one stationary and one moving session for every zone.' : !flags[4] ? 'Train and load the position model.' : !flags[5] ? 'Pass the live check for every zone.' : 'Room setup is complete.';
+        for (let i = 0; i < flags.length - 1 && flags[i]; i += 1) max = i + 1;
+        const blocker = !flags[0] ? 'Enter a room name, dimensions, and person ID.' : !flags[1] ? 'All four receivers must be healthy before capture.' : !flags[2] ? 'Collect two empty-room recordings.' : !flags[3] ? 'Record one stationary session for every zone.' : !flags[4] ? 'Train and load the position model.' : 'Room setup is complete.';
         return { flags, max, blocker, completed: flags.filter(Boolean).length };
       };
       const slots = () => {
@@ -236,31 +285,81 @@
       };
       const check = (label, passed) => `<div class="${passed ? 'passed' : ''}"><b>${passed ? '✓' : '!'}</b><span>${esc(label)}</span></div>`;
       const recording = () => state.recording?.active ? `<div class="setup-recording"><div><strong>Recording ${esc(state.recording.label)}</strong><small>${state.recording.frames || 0} frames, ${Number(state.recording.elapsedSeconds || 0).toFixed(1)} seconds</small></div><div class="setup-progress"><i style="width:${Math.round(clamp(state.recording.progress) * 100)}%"></i></div><button type="button" data-action="stop">Stop and save</button></div>` : '';
+      const locationCopy = (z) => `${feetLabel(z.x * state.config.widthFeet)} from left, ${feetLabel(z.y * state.config.lengthFeet)} from front`;
+      const zoneMap = () => {
+        const zones = state.config.zones.map((z) => {
+          const x = 50 + z.x * 800;
+          const y = 50 + z.y * 480;
+          return `<g data-zone-marker="${z.id}" transform="translate(${x.toFixed(1)},${y.toFixed(1)})"><circle class="stand ${z.stationary ? 'complete' : ''}" r="15"></circle><text y="-24" text-anchor="middle">${esc(z.label)}</text><text class="hint" y="34" text-anchor="middle">${esc(locationCopy(z))}</text></g>`;
+        }).join('');
+        return `<svg class="setup-zone-map" viewBox="0 0 900 580" role="img" aria-label="Room zone map"><rect class="room" x="50" y="50" width="800" height="480" rx="10"></rect><path class="grid" d="M250 50v480M450 50v480M650 50v480M50 170h800M50 290h800M50 410h800"></path><text class="hint" x="450" y="32" text-anchor="middle">front edge / router side</text><text class="hint" x="450" y="558" text-anchor="middle">back of room</text><g><circle class="receiver" cx="70" cy="70" r="18"></circle><text x="70" y="75" text-anchor="middle">A</text></g><g><circle class="receiver" cx="830" cy="70" r="18"></circle><text x="830" y="75" text-anchor="middle">B</text></g><g><circle class="receiver" cx="70" cy="510" r="18"></circle><text x="70" y="515" text-anchor="middle">C</text></g><g><circle class="receiver" cx="830" cy="510" r="18"></circle><text x="830" y="515" text-anchor="middle">D</text></g><g><rect class="router" x="420" y="40" width="60" height="24" rx="5"></rect><text class="hint" x="450" y="36" text-anchor="middle">router</text></g>${zones}</svg>`;
+      };
+      const dragZone = (event) => {
+        if (dragActive || (event.type === 'mousedown' && event.button !== 0)) return;
+        const marker = event.target.closest('[data-zone-marker]');
+        if (!marker) return;
+        const svg = marker.closest('svg');
+        const zone = state.config.zones.find((z) => z.id === marker.dataset.zoneMarker);
+        if (!svg || !zone) return;
+        event.preventDefault();
+        dragActive = true;
+        if (event.pointerId !== undefined) marker.setPointerCapture?.(event.pointerId);
+        const update = (pointerEvent) => {
+          const point = svg.createSVGPoint();
+          point.x = pointerEvent.clientX;
+          point.y = pointerEvent.clientY;
+          const local = point.matrixTransform(svg.getScreenCTM().inverse());
+          zone.x = clamp((local.x - 50) / 800);
+          zone.y = clamp((local.y - 50) / 480);
+          state.config.validation[zone.id] = false;
+          state.config.complete = false;
+          marker.setAttribute('transform', `translate(${(50 + zone.x * 800).toFixed(1)},${(50 + zone.y * 480).toFixed(1)})`);
+          marker.querySelector('.hint').textContent = locationCopy(zone);
+        };
+        const move = (pointerEvent) => update(pointerEvent);
+        const stop = (pointerEvent, shouldUpdate = true) => {
+          if (shouldUpdate) update(pointerEvent);
+          save();
+          dragActive = false;
+          if (event.pointerId !== undefined) marker.releasePointerCapture?.(event.pointerId);
+          window.removeEventListener(moveName, move);
+          window.removeEventListener(upName, up);
+          window.removeEventListener(cancelName, cancel);
+          render();
+        };
+        const up = (pointerEvent) => stop(pointerEvent);
+        const cancel = (pointerEvent) => stop(pointerEvent, false);
+        const mouse = event.type === 'mousedown';
+        const moveName = mouse ? 'mousemove' : 'pointermove';
+        const upName = mouse ? 'mouseup' : 'pointerup';
+        const cancelName = mouse ? 'blur' : 'pointercancel';
+        window.addEventListener(moveName, move);
+        window.addEventListener(upName, up);
+        window.addEventListener(cancelName, cancel);
+      };
       const renderStep = () => {
         const c = state.config;
-        if (c.step === 0) return `<section class="setup-panel"><div class="setup-callout"><strong>Start with the physical room, not the model.</strong><p>Measure the usable sensing area. Keep the router, receivers, furniture, and large metal objects fixed after training.</p></div><div class="setup-fields"><label>Room name<input data-field="roomName" value="${esc(c.roomName)}"></label><label>Width, meters<input data-field="widthMeters" type="number" min="1" step=".1" value="${c.widthMeters}"></label><label>Depth, meters<input data-field="heightMeters" type="number" min="1" step=".1" value="${c.heightMeters}"></label><label>Person ID<input data-field="subjectId" value="${esc(c.subjectId)}"></label></div><p class="setup-note">This flow assumes A-D are placed near the four corners and the router is centered on the front edge.</p></section>`;
+        if (c.step === 0) return `<section class="setup-panel"><div class="setup-callout"><strong>Start with the physical room, not the model.</strong><p>Measure the usable floor area in feet. Keep the router, receivers, furniture, and large metal objects fixed after training.</p></div><div class="setup-fields"><label>Room name<input data-field="roomName" value="${esc(c.roomName)}"></label><label>Width, feet<input data-field="widthFeet" type="number" min="1" step=".1" value="${c.widthFeet}"></label><label>Length, feet<input data-field="lengthFeet" type="number" min="1" step=".1" value="${c.lengthFeet}"></label><label>Person ID<input data-field="subjectId" value="${esc(c.subjectId)}"></label></div><p class="setup-note">Receiver mounting height is not used by the current 2D model; keep all receivers at the same stable height. Training geometry is converted to meters automatically.</p></section>`;
         if (c.step === 1) {
           const cards = ['A','B','C','D'].map((slot, i) => { const node = slots()[i]; const ready = Boolean(node?.ready); const detail = node ? ready ? `${Number(node.frameRateHz || 0).toFixed(1)} Hz, baseline ready` : (node.readinessReasons || []).join('; ') : 'No receiver discovered'; return `<article class="setup-receiver ${ready ? 'ready' : ''}"><header><b>Receiver ${slot}</b><span>${ready ? 'Ready' : 'Needs attention'}</span></header><strong>${esc(node?.deviceId || 'Not found')}</strong><small>${esc(detail)}</small></article>`; }).join('');
           return `<section class="setup-panel"><div class="setup-callout ${state.snapshot?.readiness?.readyForCapture ? 'success' : 'warning'}"><strong>${state.snapshot?.readiness?.onlineNodeCount || 0} of 4 receivers ready</strong><p>${esc((state.snapshot?.readiness?.reasons || ['Wait for healthy CSI streams and learned baselines.']).join(' '))}</p></div><div class="setup-receivers">${cards}</div><p class="setup-note">Mount them at a stable height, keep clear RF paths across the room, and do not move them after capture starts.</p></section>`;
         }
         if (c.step === 2) return `<section class="setup-panel"><div class="setup-progress-card"><div><span>Empty-room recordings</span><strong>${c.emptyRecordings} / 2</strong></div><div class="setup-progress"><i style="width:${Math.min(100, c.emptyRecordings * 50)}%"></i></div></div><div class="setup-callout warning"><strong>Everyone must leave the sensing area.</strong><p>Close doors and leave the room unchanged. Each capture runs for up to 90 seconds and 2,000 frames.</p></div>${recording()}<button class="setup-primary" type="button" data-action="empty" ${!state.snapshot?.readiness?.readyForCapture || state.recording?.active ? 'disabled' : ''}>Record empty room</button></section>`;
         if (c.step === 3) {
-          const cards = c.zones.map((z) => `<article class="setup-zone ${z.stationary && z.moving ? 'complete' : ''}"><header><label>Zone label<input data-zone-field="label" data-zone="${z.id}" value="${esc(z.label)}"></label><button type="button" data-action="remove-zone" data-zone="${z.id}" ${c.zones.length <= 2 ? 'disabled' : ''}>×</button></header><div class="setup-coordinates"><label>X<input data-zone-field="x" data-zone="${z.id}" type="number" min="0" max="1" step=".01" value="${z.x}"></label><label>Y<input data-zone-field="y" data-zone="${z.id}" type="number" min="0" max="1" step=".01" value="${z.y}"></label></div><div class="setup-captures"><button type="button" data-action="zone" data-zone="${z.id}" data-movement="stationary" ${state.recording?.active ? 'disabled' : ''}><span>Stand still</span><b>${z.stationary ? '✓' : 'Record'}</b></button><button type="button" data-action="zone" data-zone="${z.id}" data-movement="moving" ${state.recording?.active ? 'disabled' : ''}><span>Move slowly</span><b>${z.moving ? '✓' : 'Record'}</b></button></div></article>`).join('');
-          return `<section class="setup-panel"><div class="setup-callout"><strong>Capture every physical point two different ways.</strong><p>Stand still at the marked point, then move slowly within roughly one step of it. Keep the same label and coordinates.</p></div>${recording()}<div class="setup-zones">${cards}</div><button type="button" data-action="add-zone">Add another zone</button></section>`;
+          const cards = c.zones.map((z) => `<article class="setup-zone ${z.stationary ? 'complete' : ''}"><header><label>Marker name<input data-zone-field="label" data-zone="${z.id}" value="${esc(z.label)}"></label><button type="button" data-action="remove-zone" data-zone="${z.id}" ${c.zones.length <= 2 ? 'disabled' : ''}>×</button></header><p class="setup-location">Drag this marker on the map or use the move buttons, then stand at ${esc(locationCopy(z))}.</p><div class="setup-move-controls"><button type="button" data-action="move-zone" data-zone="${z.id}" data-dx="-.05" data-dy="0">← Left</button><button type="button" data-action="move-zone" data-zone="${z.id}" data-dx=".05" data-dy="0">Right →</button><button type="button" data-action="move-zone" data-zone="${z.id}" data-dx="0" data-dy="-.05">Front ↑</button><button type="button" data-action="move-zone" data-zone="${z.id}" data-dx="0" data-dy=".05">Back ↓</button></div><div class="setup-coordinates"><label>Left-to-right<input data-zone-field="x" data-zone="${z.id}" type="number" min="0" max="1" step=".01" value="${z.x}"></label><label>Front-to-back<input data-zone-field="y" data-zone="${z.id}" type="number" min="0" max="1" step=".01" value="${z.y}"></label></div><div class="setup-captures"><button type="button" data-action="zone" data-zone="${z.id}" data-movement="stationary" ${state.recording?.active ? 'disabled' : ''}><span>Stand still on marker</span><b>${z.stationary ? '✓' : 'Record'}</b></button></div></article>`).join('');
+          return `<section class="setup-panel"><div class="setup-callout"><strong>Drag markers to the real places you can stand.</strong><p>These are training points, not fixed room fixtures. For every marker, record once while standing still.</p></div>${zoneMap()}${recording()}<div class="setup-zones">${cards}</div><button type="button" data-action="add-zone">Add another marker</button></section>`;
         }
-        if (c.step === 4) return `<section class="setup-panel"><div class="setup-checklist">${check('Four receivers ready', Boolean(state.snapshot?.readiness?.readyForCapture))}${check('Two empty-room recordings', c.emptyRecordings >= 2)}${check(`${c.zones.length} zones with stationary and moving captures`, zonesReady())}${check('Stable room definition', roomValid())}</div><div class="setup-callout ${state.model?.loaded ? 'success' : ''}"><strong>${state.model?.loaded ? 'Position model loaded.' : 'Train the position classifier.'}</strong><p>The trainer groups windows by recording, rejects under-sampled classes, and loads the resulting model into the live engine.</p></div><button class="setup-primary" type="button" data-action="train" ${!gates().flags[3] ? 'disabled' : ''}>${state.model?.loaded ? 'Retrain position model' : 'Train position model'}</button>${state.message ? `<p class="setup-message">${esc(state.message)}</p>` : ''}</section>`;
-        const rows = c.zones.map((z) => { const active = state.activeValidation?.zoneId === z.id; const pass = Boolean(c.validation[z.id]); return `<article class="setup-validation ${pass ? 'complete' : ''}"><div><strong>${esc(z.label)}</strong><small>${pass ? 'Live check passed' : active ? `${state.activeValidation.matches} / ${REQUIRED_MATCHES} matching snapshots` : 'Not validated'}</small></div><button type="button" data-action="validate" data-zone="${z.id}" ${state.activeValidation && !active ? 'disabled' : ''}>${active ? 'Watching…' : pass ? 'Run again' : 'Validate'}</button></article>`; }).join('');
-        return `<section class="setup-panel"><div class="setup-callout ${c.complete ? 'success' : ''}"><strong>Validate live before trusting the position dot.</strong><p>Stand at each zone. The model must return the correct accepted zone for ${REQUIRED_MATCHES} consecutive dashboard snapshots.</p></div>${state.message ? `<p class="setup-message">${esc(state.message)}</p>` : ''}<div class="setup-validation-list">${rows}</div><div class="setup-caveat"><strong>What this model can claim</strong><p>It estimates one coarse trained zone with uncertainty. It does not prove exact body coordinates, identity, pose, or people count.</p></div></section>`;
+        return `<section class="setup-panel"><div class="setup-checklist">${check('Four receivers ready', Boolean(state.snapshot?.readiness?.readyForCapture))}${check('Two empty-room recordings', c.emptyRecordings >= 2)}${check(`${trainingZones().length} zones with stationary captures`, zonesReady())}${check('Stable room definition', roomValid())}</div><div class="setup-callout ${state.model?.loaded ? 'success' : ''}"><strong>${state.model?.loaded ? 'Position model loaded.' : 'Train the position classifier.'}</strong><p>The trainer groups windows by recording, rejects under-sampled classes, and loads the resulting model into the live engine.</p></div><button class="setup-primary" type="button" data-action="train" ${!gates().flags[3] ? 'disabled' : ''}>${state.model?.loaded ? 'Retrain position model' : 'Train position model'}</button>${state.message ? `<p class="setup-message">${esc(state.message)}</p>` : ''}<div class="setup-caveat"><strong>What this model can claim</strong><p>It estimates one coarse trained zone with uncertainty. It does not prove exact body coordinates, identity, pose, or people count.</p></div></section>`;
       };
       const render = () => {
         const g = gates();
-        byId('roomSetupLaunch').innerHTML = state.config.complete ? '<span>Room ready</span><small>Review setup</small>' : `<span>Set up room</span><small>${g.completed} of 6 complete</small>`;
+        byId('roomSetupLaunch').innerHTML = state.config.complete ? '<span>Room ready</span><small>Review setup</small>' : `<span>Set up room</span><small>${g.completed} of ${STEPS.length} complete</small>`;
         byId('roomSetupLaunch').classList.toggle('complete', state.config.complete);
         if (byId('roomSetup').hidden) return;
-        byId('roomSetupSubtitle').textContent = ['Define the physical sensing area and calibration person.','Verify four CSI streams and lock receiver placement.','Teach the system what the empty room looks like.','Collect repeated examples at known room points.','Build and load a grouped position classifier.','Prove the live model recognizes every zone.'][state.config.step];
-        byId('roomSetupSteps').innerHTML = STEPS.map((label, i) => `<button type="button" data-step="${i}" class="${i === state.config.step ? 'active' : ''} ${i < g.max || (i === 5 && state.config.complete) ? 'complete' : ''}" ${i > g.max ? 'disabled' : ''}><b>${i < g.max || (i === 5 && state.config.complete) ? '✓' : i + 1}</b><span>${label}</span></button>`).join('');
+        byId('roomSetupSubtitle').textContent = ['Define the physical sensing area and calibration person.','Verify four CSI streams and lock receiver placement.','Teach the system what the empty room looks like.','Collect repeated examples at known room points.','Build and load a grouped position classifier.'][state.config.step];
+        byId('roomSetupSteps').innerHTML = STEPS.map((label, i) => `<button type="button" data-step="${i}" class="${i === state.config.step ? 'active' : ''} ${i < g.max || (i === 4 && state.config.complete) ? 'complete' : ''}" ${i > g.max ? 'disabled' : ''}><b>${i < g.max || (i === 4 && state.config.complete) ? '✓' : i + 1}</b><span>${label}</span></button>`).join('');
         byId('roomSetupContent').innerHTML = renderStep();
-        byId('roomSetupFooter').innerHTML = `<button type="button" data-action="back" ${state.config.step === 0 ? 'disabled' : ''}>Back</button><div><strong>${g.completed} of 6 steps complete</strong><small>${esc(g.blocker)}</small></div>${state.config.step === 5 ? `<button type="button" class="primary" data-action="finish" ${!validated() ? 'disabled' : ''}>Finish setup</button>` : `<button type="button" class="primary" data-action="next" ${state.config.step >= g.max ? 'disabled' : ''}>Continue</button>`}`;
+        byId('roomSetupFooter').innerHTML = `<button type="button" data-action="back" ${state.config.step === 0 ? 'disabled' : ''}>Back</button><div><strong>${g.completed} of ${STEPS.length} steps complete</strong><small>${esc(g.blocker)}</small></div>${state.config.step === 4 ? `<button type="button" class="primary" data-action="finish" ${!g.flags[4] ? 'disabled' : ''}>Finish setup</button>` : `<button type="button" class="primary" data-action="next" ${state.config.step >= g.max ? 'disabled' : ''}>Continue</button>`}`;
       };
       const open = (value) => { byId('roomSetup').hidden = !value; document.body.classList.toggle('room-setup-open', value); render(); };
       const startCapture = async (kind, zoneId, movement) => {
@@ -291,32 +390,18 @@
       const geometry = () => {
         const nodes = slots();
         if (nodes.length !== 4 || nodes.some((node) => !node?.deviceId)) throw new Error('Four mapped receiver device IDs are required.');
-        const w = state.config.widthMeters, h = state.config.heightMeters;
+        const w = feetToMeters(state.config.widthFeet), h = feetToMeters(state.config.lengthFeet);
         const points = [['A',0,0],['B',w,0],['C',0,h],['D',w,h]];
-        return { format:'rfsense-room-geometry/1', room:{ name:state.config.roomName, widthMeters:w, heightMeters:h }, transmitter:{ name:'room-router', x:w/2, y:0 }, receivers:points.map(([slot,x,y],i) => ({ slot, x, y, deviceId:String(nodes[i].deviceId).replace(/^0x/,'').padStart(8,'0'), name:`Receiver ${slot}` })), zones:Object.fromEntries(state.config.zones.map((z) => [z.label,{ x:z.x*w, y:z.y*h }])) };
+        return { format:'rfsense-room-geometry/1', room:{ name:state.config.roomName, widthMeters:w, heightMeters:h }, transmitter:{ name:'room-router', x:w/2, y:0 }, receivers:points.map(([slot,x,y],i) => ({ slot, x, y, deviceId:String(nodes[i].deviceId).replace(/^0x/,'').padStart(8,'0'), name:`Receiver ${slot}` })), zones:Object.fromEntries(trainingZones().map((z) => [z.label,{ x:z.x*w, y:z.y*h }])) };
       };
       const train = async () => {
         state.message = 'Training the grouped position model…'; render();
         try {
-          state.model = await request('/api/model/train', { target:'position', window:64, step:32, minRecordingsPerClass:2, roomGeometry:geometry() });
-          state.config.validation = {}; state.config.complete = false; state.config.step = 5;
-          state.message = `Model loaded with ${(state.model.classes || []).length} classes. Validate every zone now.`;
+          state.model = await request('/api/model/train', { target:'position', window:64, step:32, minRecordingsPerClass:1, roomGeometry:geometry() });
+          state.config.validation = {}; state.config.complete = true; state.config.step = 4;
+          state.message = `Model loaded with ${(state.model.classes || []).length} classes.`;
         } catch (error) { state.message = error.message; }
         save(); render();
-      };
-      const validateZone = (zoneId) => {
-        const zone = state.config.zones.find((z) => z.id === zoneId);
-        state.activeValidation = { zoneId, label:zone.label, matches:0, deadline:Date.now()+45000 };
-        state.message = `Stand at ${zone.label}. Waiting for accepted predictions.`; render();
-      };
-      const evaluate = (snapshot) => {
-        const active = state.activeValidation;
-        if (!active) return;
-        if (Date.now() > active.deadline) { state.message = `${active.label} timed out. Review diagnostics and retry.`; state.activeValidation = null; return render(); }
-        const p = snapshot?.fused?.position;
-        active.matches = p?.accepted && p.zone === active.label ? active.matches + 1 : 0;
-        if (active.matches >= REQUIRED_MATCHES) { state.config.validation[active.zoneId] = true; state.message = `${active.label} passed live validation.`; state.activeValidation = null; state.config.complete = validated(); save(); }
-        render();
       };
       byId('roomSetupLaunch').addEventListener('click', () => open(true));
       byId('roomSetup').addEventListener('click', async (event) => {
@@ -325,26 +410,37 @@
         const action = target.dataset.action;
         if (action === 'close') return open(false);
         if (action === 'back') state.config.step = Math.max(0, state.config.step - 1);
-        if (action === 'next') state.config.step = Math.min(5, state.config.step + 1);
+        if (action === 'next') state.config.step = Math.min(STEPS.length - 1, state.config.step + 1);
         if (action === 'empty') await startCapture('empty');
         if (action === 'zone') await startCapture('zone', target.dataset.zone, target.dataset.movement);
         if (action === 'stop') { try { finishRecording(await request('/api/recording/stop', {})); } catch (error) { state.message = error.message; } }
         if (action === 'train') await train();
-        if (action === 'validate') validateZone(target.dataset.zone);
         if (action === 'add-zone') state.config.zones.push({ id:`zone-${Date.now()}`, label:`zone-${state.config.zones.length+1}`, x:.5, y:.5, stationary:0, moving:0 });
+        if (action === 'move-zone') {
+          const zone = state.config.zones.find((z) => z.id === target.dataset.zone);
+          if (zone) {
+            zone.x = clamp(zone.x + Number(target.dataset.dx || 0));
+            zone.y = clamp(zone.y + Number(target.dataset.dy || 0));
+            state.config.validation[zone.id] = false;
+            state.config.complete = false;
+          }
+        }
         if (action === 'remove-zone' && state.config.zones.length > 2) state.config.zones = state.config.zones.filter((z) => z.id !== target.dataset.zone);
-        if (action === 'finish' && validated()) { state.config.complete = true; save(); return open(false); }
+        if (action === 'finish' && gates().flags[4]) { state.config.complete = true; save(); return open(false); }
         save(); render();
       });
+      byId('roomSetup').addEventListener('pointerdown', dragZone);
+      byId('roomSetup').addEventListener('mousedown', dragZone);
+      byId('roomSetup').addEventListener('input', (event) => {
+        updateSetupField(event.target);
+      });
       byId('roomSetup').addEventListener('change', (event) => {
-        if (event.target.dataset.field) state.config[event.target.dataset.field] = ['widthMeters','heightMeters'].includes(event.target.dataset.field) ? Number(event.target.value) : event.target.value.trim();
-        if (event.target.dataset.zoneField) { const zone = state.config.zones.find((z) => z.id === event.target.dataset.zone); const field = event.target.dataset.zoneField; zone[field] = ['x','y'].includes(field) ? clamp(event.target.value) : event.target.value.trim().toLowerCase().replace(/[^a-z0-9-]+/g,'-'); state.config.validation[zone.id] = false; }
-        state.config.complete = false; save(); render();
+        if (updateSetupField(event.target)) render();
       });
       const stream = window.RfSenseDashboardStream;
-      stream?.on('snapshot', (snapshot) => { state.snapshot = snapshot; evaluate(snapshot); if (!byId('roomSetup').hidden) render(); });
+      stream?.on('snapshot', (snapshot) => { state.snapshot = snapshot; if (!byId('roomSetup').hidden) renderWhenIdle(); });
       stream?.on('recording', (value) => finishRecording(value));
-      stream?.on('model', (value) => { state.model = value; render(); });
+      stream?.on('model', (value) => { state.model = value; renderWhenIdle(); });
       Promise.all([request('/api/nodes'),request('/api/recording'),request('/api/model')]).then(([snapshot,recordingStatus,model]) => { state.snapshot=snapshot; state.recording=recordingStatus; state.model=model; render(); }).catch(() => render());
       render();
     </script>

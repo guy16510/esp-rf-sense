@@ -34,9 +34,13 @@ describe('four-node dashboard UI', () => {
     expect(page).toContain('GUIDED SETUP');
     expect(page).toContain('Set up room');
     expect(page).toContain('Record empty room');
-    expect(page).toContain('Record one stationary and one moving session');
+    expect(page).toContain('Record one stationary session');
+    expect(page).toContain('setup-zone-map');
+    expect(page).toContain('Drag markers to the real places you can stand');
+    expect(page).toContain('data-action="move-zone"');
     expect(page).toContain("format:'rfsense-room-geometry/1'");
-    expect(page).toContain('REQUIRED_MATCHES');
+    expect(page).not.toContain('Move within one step');
+    expect(page).not.toContain('REQUIRED_MATCHES');
     expect(page).toContain("request('/api/model/train'");
     expect(page).not.toContain('ESP32-S3 telemetry');
 
