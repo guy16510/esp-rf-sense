@@ -32,41 +32,81 @@ jobs:
           tags: rf-sense:test
           cache-from: type=gha
           cache-to: type=gha,mode=max
-      - name: Start and verify dashboard
+
+      - name: Start dashboard container
         shell: bash
         run: |
           set -euo pipefail
           data_dir="${RUNNER_TEMP}/rf-sense-data"
-          mkdir -p "$data_dir"
+          mkdir -p "$data_dir" container-diagnostics
+          echo "$data_dir" > container-diagnostics/data-dir.txt
           docker run --detach \
             --name rf-sense-test \
             --publish 18080:8080/tcp \
             --publish 15566:5566/udp \
             --volume "$data_dir:/data" \
             rf-sense:test
+          docker inspect --format '{{json .State}}' rf-sense-test > container-diagnostics/initial-state.json
 
-          cleanup() {
-            status=$?
-            if [ "$status" -ne 0 ]; then
-              docker logs rf-sense-test || true
-            fi
-            docker rm --force rf-sense-test >/dev/null 2>&1 || true
-            exit "$status"
-          }
-          trap cleanup EXIT
-
-          for attempt in $(seq 1 30); do
+      - name: Wait for readiness endpoint
+        shell: bash
+        run: |
+          set -euo pipefail
+          ready=false
+          for attempt in $(seq 1 45); do
+            docker inspect --format '{{.State.Running}}' rf-sense-test | grep -qx true
             if curl --fail --silent --show-error http://127.0.0.1:18080/api/readiness > readiness.json; then
+              ready=true
               break
             fi
             sleep 2
           done
+          test "$ready" = true
+          test -s readiness.json
+          cp readiness.json container-diagnostics/readiness.json
 
+      - name: Validate readiness contract
+        run: node -e "const fs=require('node:fs'); const state=JSON.parse(fs.readFileSync('readiness.json','utf8')); if (typeof state.readyForCapture !== 'boolean') process.exit(1)"
+
+      - name: Validate fleet page
+        shell: bash
+        run: |
+          set -euo pipefail
           curl --fail --silent --show-error http://127.0.0.1:18080/fleet > fleet.html
           grep --quiet "RF-SENSE" fleet.html
-          node -e "const state = require('./readiness.json'); if (typeof state.readyForCapture !== 'boolean') process.exit(1)"
+          cp fleet.html container-diagnostics/fleet.html
+
+      - name: Validate persistent directories
+        shell: bash
+        run: |
+          set -euo pipefail
+          data_dir="$(cat container-diagnostics/data-dir.txt)"
+          docker exec rf-sense-test test -d /data/recordings
+          docker exec rf-sense-test test -d /data/models
           test -d "$data_dir/recordings"
           test -d "$data_dir/models"
+
+      - name: Capture container diagnostics
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p container-diagnostics
+          docker inspect rf-sense-test > container-diagnostics/inspect.json 2>&1 || true
+          docker logs rf-sense-test > container-diagnostics/container.log 2>&1 || true
+          data_dir="$(cat container-diagnostics/data-dir.txt 2>/dev/null || true)"
+          if [ -n "$data_dir" ]; then
+            find "$data_dir" -maxdepth 3 -print > container-diagnostics/data-tree.txt 2>&1 || true
+          fi
+          docker rm --force rf-sense-test >/dev/null 2>&1 || true
+
+      - name: Upload container diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: container-smoke-diagnostics
+          path: container-diagnostics
+          if-no-files-found: ignore
+          retention-days: 14
 
   publish:
     name: publish GHCR image
