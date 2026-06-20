@@ -12,34 +12,29 @@ test.beforeEach(async ({ page }) => {
 
 test('renders four live receivers and the D3 room view', async ({ page }) => {
   await page.goto(baseURL, { waitUntil: 'domcontentloaded' });
-
   await expect(page.locator('#roomD3')).toBeVisible();
   await expect(page.locator('.rf-node')).toHaveCount(4);
   await expect(page.locator('.node-card')).toHaveCount(4);
   await expect(page.locator('#fleetStatus')).toContainText('4 / 4');
   await expect(page.locator('.node-card.ready, .node-card.active')).toHaveCount(4);
   await expect(page.locator('.rf-link.ready')).toHaveCount(4);
+  await expect.poll(async () => page.locator('#fusedState').textContent(), { timeout: 12_000 }).toMatch(/Clear|Activity/);
+  await expect.poll(async () => {
+    const regions = await page.locator('.rf-region').count();
+    const trainedLayer = await page.locator('#trainedPositionLayer').count();
+    return regions + trainedLayer;
+  }, { timeout: 12_000 }).toBeGreaterThan(0);
+  await expect(page.locator('.rf-room-footer')).toContainText(/not verified people counts|Position unavailable|No marker is shown|no receiver accepted a trained position/);
+  await page.screenshot({ path: 'apps/dashboard/e2e/artifacts/control-center.png', fullPage: true });
+});
 
-  await expect
-    .poll(async () => page.locator('#fusedState').textContent(), { timeout: 12_000 })
-    .toMatch(/Clear|Activity/);
-
-  await expect
-    .poll(
-      async () => {
-        const regions = await page.locator('.rf-region').count();
-        const trainedLayer = await page.locator('#trainedPositionLayer').count();
-        return regions + trainedLayer;
-      },
-      { timeout: 12_000 },
-    )
-    .toBeGreaterThan(0);
-
-  await expect(page.locator('.rf-room-footer')).toContainText(/not verified people counts|Position unavailable|No marker is shown/);
-  await page.screenshot({
-    path: 'apps/dashboard/e2e/artifacts/control-center.png',
-    fullPage: true,
-  });
+test('shows device redirection, OTA, and validation onboarding', async ({ page }) => {
+  await page.goto(`${baseURL}/fleet?guide=device`, { waitUntil: 'domcontentloaded' });
+  await expect(page.getByRole('heading', { name: /Connect, redirect, update/ })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /Change the collector server IP/ })).toBeVisible();
+  await expect(page.locator('pre').first()).toContainText('--collector-host');
+  await expect(page.getByRole('heading', { name: /Check and apply OTA firmware/ })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /Validate before training/ })).toBeVisible();
 });
 
 test('falls back to uploaded coarse position recordings when continuous XY cannot train', async ({ page }) => {
@@ -48,29 +43,17 @@ test('falls back to uploaded coarse position recordings when continuous XY canno
     const body = route.request().postDataJSON();
     targets.push(body.target);
     if (body.target === 'continuous-xy') {
-      await route.fulfill({
-        status: 400,
-        contentType: 'application/json',
-        body: JSON.stringify({ error: 'no usable RFV2 continuous XY recordings' }),
-      });
+      await route.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ error: 'no usable RFV2 continuous XY recordings' }) });
       return;
     }
     await route.fulfill({
       status: 201,
       contentType: 'application/json',
-      body: JSON.stringify({
-        loaded: true,
-        target: 'coarse-zones',
-        recordings: 9,
-        windows: 180,
-        classes: ['empty', 'left', 'center', 'right'],
-      }),
+      body: JSON.stringify({ loaded: true, target: 'coarse-zones', recordings: 9, windows: 180, classes: ['empty', 'left', 'center', 'right'] }),
     });
   });
-
   await page.goto(baseURL, { waitUntil: 'domcontentloaded' });
   await page.locator('#trainModelButton').click();
-
   await expect(page.locator('#modelBadge')).toHaveText('Coarse XY fallback');
   await expect(page.locator('#modelStatus')).toContainText('Loaded coarse XY fallback from 9 recordings and 180 windows');
   expect(targets).toEqual(['continuous-xy', 'position']);
@@ -79,12 +62,8 @@ test('falls back to uploaded coarse position recordings when continuous XY canno
 test('starts and stops a capture after all streams are ready', async ({ page, request }) => {
   await page.goto(baseURL, { waitUntil: 'domcontentloaded' });
   await expect(page.locator('[data-recording-label="empty"]')).toBeEnabled({ timeout: 10_000 });
-
-  const response = await request.post(`${baseURL}/api/recording/start`, {
-    data: { label: 'empty', targetSeconds: 5, targetFrames: 1 },
-  });
+  const response = await request.post(`${baseURL}/api/recording/start`, { data: { label: 'empty', targetSeconds: 5, targetFrames: 1 } });
   expect(response.status()).toBe(201);
-
   await expect(page.locator('#recordingBadge')).toContainText('Recording');
   const stop = await request.post(`${baseURL}/api/recording/stop`);
   expect(stop.ok()).toBe(true);

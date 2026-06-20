@@ -3,10 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Operator CLI: discover devices over mDNS and drive OTA check/apply via the control API.",
+  "description": "RF-Sense operator CLI.",
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc --build",
+    "configure": "tsx src/configure.ts",
     "discover": "tsx src/discover.ts",
     "ota": "tsx src/ota.ts",
     "status": "tsx src/status.ts"
