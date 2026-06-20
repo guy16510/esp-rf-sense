@@ -29,7 +29,7 @@ test('renders four live receivers and the D3 room view', async ({ page }) => {
 });
 
 test('shows device redirection, OTA, and validation onboarding', async ({ page }) => {
-  await page.goto(`${baseURL}/device-onboarding.html`, { waitUntil: 'domcontentloaded' });
+  await page.goto(`${baseURL}/fleet?guide=device`, { waitUntil: 'domcontentloaded' });
   await expect(page.getByRole('heading', { name: /Connect, redirect, update/ })).toBeVisible();
   await expect(page.getByRole('heading', { name: /Change the collector server IP/ })).toBeVisible();
   await expect(page.locator('pre').first()).toContainText('--collector-host');
