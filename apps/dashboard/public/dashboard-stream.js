@@ -65,10 +65,46 @@ function start() {
   return source;
 }
 
+async function trainModel(body) {
+  const response = await fetch('/api/model/train', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const value = await response.json();
+  if (!response.ok) throw new Error(value.error || response.statusText);
+  return value;
+}
+
+async function trainPositionWithFallback(continuousRequest) {
+  try {
+    return await trainModel(continuousRequest);
+  } catch (continuousError) {
+    try {
+      const model = await trainModel({
+        target: 'position',
+        window: 64,
+        step: 32,
+        minRecordingsPerClass: 1,
+      });
+      return {
+        ...model,
+        fallback: 'coarse-zones',
+        continuousError: continuousError instanceof Error ? continuousError.message : String(continuousError),
+      };
+    } catch (coarseError) {
+      throw new Error(
+        `Continuous XY failed: ${continuousError instanceof Error ? continuousError.message : String(continuousError)}. Coarse fallback failed: ${coarseError instanceof Error ? coarseError.message : String(coarseError)}`,
+      );
+    }
+  }
+}
+
 window.RfSenseDashboardStream = {
   on,
   start,
   state,
+  trainPositionWithFallback,
 };
 
 start();
