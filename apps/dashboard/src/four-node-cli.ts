@@ -36,7 +36,7 @@ const recordingsDir = values.get('recordings-dir') ?? 'recordings/dashboard';
 const modelPath = values.get('model') ?? values.get('model-path') ?? 'models/dashboard-labels.json';
 const loadedModel = values.has('no-model')
   ? undefined
-  : await loadDashboardCliModelIfPresent(modelPath, values.has('model') || values.has('model-path'));
+  : await loadDashboardCliModelIfPresent(modelPath, values.has('model'));
 const defaultSlotDeviceIds = ['2f4b47f0', '2f4b5390', '2f4b735c', '2f77883c'];
 const slotDeviceIds = ['a', 'b', 'c', 'd'].map((slot, index) =>
   (
