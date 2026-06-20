@@ -1,0 +1,14 @@
+.git
+.github
+node_modules
+**/node_modules
+**/dist
+coverage
+recordings
+models
+data
+build
+firmware/build
+firmware/managed_components
+*.log
+.env*
