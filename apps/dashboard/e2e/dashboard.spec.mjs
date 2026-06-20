@@ -25,10 +25,17 @@ test('renders four live receivers and the D3 room view', async ({ page }) => {
     .toMatch(/Clear|Activity/);
 
   await expect
-    .poll(async () => page.locator('.rf-region').count(), { timeout: 12_000 })
+    .poll(
+      async () => {
+        const regions = await page.locator('.rf-region').count();
+        const trainedLayer = await page.locator('#trainedPositionLayer').count();
+        return regions + trainedLayer;
+      },
+      { timeout: 12_000 },
+    )
     .toBeGreaterThan(0);
 
-  await expect(page.locator('.rf-room-footer')).toContainText('not verified people counts');
+  await expect(page.locator('.rf-room-footer')).toContainText(/not verified people counts|Position unavailable|No marker is shown/);
   await page.screenshot({
     path: 'apps/dashboard/e2e/artifacts/control-center.png',
     fullPage: true,

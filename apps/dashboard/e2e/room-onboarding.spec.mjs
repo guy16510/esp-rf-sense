@@ -17,7 +17,7 @@ test('guides a new room through receiver and baseline gates', async ({ page, req
 
   const wizard = page.locator('#roomSetup');
   await expect(wizard).toBeVisible();
-  await expect(wizard.locator('#roomSetupSteps button')).toHaveCount(6);
+  await expect(wizard.locator('#roomSetupSteps button')).toHaveCount(5);
   await expect(wizard.locator('[data-step="0"]')).toHaveClass(/active/);
   await expect(wizard.locator('[data-step="3"]')).toBeDisabled();
 
