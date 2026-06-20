@@ -63,10 +63,10 @@ function installPositionControls() {
     panel.querySelector('#trainModelButton'),
   );
   if (modelPanel) {
-    modelPanel.querySelector('h2').textContent = 'Coarse zone fallback';
-    get('trainModelButton').textContent = 'Train position model';
+    modelPanel.querySelector('h2').textContent = 'Continuous XY model';
+    get('trainModelButton').textContent = 'Train continuous XY model';
     get('modelStatus').textContent =
-      'Train from labelled empty-room and occupied-zone recordings. The output is a coarse zone estimate, not camera-like tracking.';
+      'Train from saved empty-room and meter-coordinate recordings. The output is an estimated XY coordinate, not exact body tracking.';
     get('trainModelButton').addEventListener(
       'click',
       (event) => {
@@ -296,17 +296,19 @@ async function trainPositionModel() {
   const button = get('trainModelButton');
   button.disabled = true;
   get('loadModelButton').disabled = true;
-  get('modelStatus').textContent = 'Training leakage-safe position model from grouped recordings...';
+  get('modelStatus').textContent = 'Training continuous XY model from grouped recordings...';
   try {
     positionState.model = await post('/api/model/train', {
-      target: 'position',
-      window: 64,
-      step: 32,
-      minRecordingsPerClass: 2,
+      target: 'continuous-xy',
+      roomWidthMeters: roomWidthMeters(),
+      roomHeightMeters: roomHeightMeters(),
+      sourceMappings: sourceMappings(),
+      windowPackets: 24,
+      stepPackets: 8,
     });
-    get('modelStatus').textContent = `Loaded coarse-zone model with ${(positionState.model.classes || []).length} classes from ${positionState.model.recordings || 0} recordings.`;
+    get('modelStatus').textContent = `Loaded continuous XY model from ${positionState.model.recordings || 0} recordings and ${positionState.model.windows || 0} windows.`;
     get('modelBadge').className = 'badge ready';
-    get('modelBadge').textContent = 'Coarse zones loaded';
+    get('modelBadge').textContent = 'Continuous XY loaded';
   } catch (error) {
     get('modelStatus').textContent = error.message;
     get('modelBadge').className = 'badge issue';
@@ -315,6 +317,34 @@ async function trainPositionModel() {
     button.disabled = false;
     get('loadModelButton').disabled = false;
   }
+}
+
+function roomWidthMeters() {
+  return Math.max(0.001, Number(roomSetupConfig().widthFeet || 0) * 0.3048);
+}
+
+function roomHeightMeters() {
+  return Math.max(0.001, Number(roomSetupConfig().lengthFeet || 0) * 0.3048);
+}
+
+function roomSetupConfig() {
+  try {
+    return JSON.parse(localStorage.getItem('rfsense-room-setup/v1') || '{}') || {};
+  } catch {
+    return {};
+  }
+}
+
+function sourceMappings() {
+  const snapshot = positionState.snapshot || {};
+  const nodes = Array.isArray(snapshot.nodes) ? snapshot.nodes : [];
+  const ids = Array.isArray(snapshot.slotDeviceIds) ? snapshot.slotDeviceIds : [];
+  const mappings = {};
+  ['A', 'B', 'C', 'D'].forEach((slot, index) => {
+    const deviceId = ids[index] || nodes[index]?.deviceId;
+    mappings[slot] = { deviceId: String(deviceId || '').replace(/^0x/iu, '').padStart(8, '0') };
+  });
+  return mappings;
 }
 
 function updatePositionControls() {

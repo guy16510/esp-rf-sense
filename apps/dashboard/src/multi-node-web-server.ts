@@ -4,9 +4,17 @@ import { fileURLToPath } from 'node:url';
 
 import type { DashboardState } from './contracts.js';
 import { buildContinuousXYDataset } from './continuous-xy-dataset.js';
-import { saveContinuousXYModel, trainContinuousXYModel } from './continuous-xy-model.js';
+import {
+  CONTINUOUS_XY_MODEL_FORMAT,
+  loadContinuousXYModel,
+  saveContinuousXYModel,
+  trainContinuousXYModel,
+  type ContinuousXYModel,
+} from './continuous-xy-model.js';
 import { trainDashboardModel } from './dashboard-model-trainer.js';
 import type { DashboardRecorder } from './dashboard-recorder.js';
+import { JointPositionEngine } from './joint-position-engine.js';
+import { LiveXYRuntime, type ReceiverSourceMapping, type UdpSource } from './live-xy-runtime.js';
 import { loadPortableModel } from './model.js';
 import type { MultiNodeEngine, MultiNodeSnapshot } from './multi-node-engine.js';
 import { loadRoomGeometry, validateRoomGeometry } from './room-geometry.js';
@@ -36,6 +44,9 @@ export interface MultiNodeServerOptions {
   modelPath: string;
   model?: ModelStatus;
   slotDeviceIds?: string[];
+  receiverMappings?: ReceiverSourceMapping[];
+  continuousXYModel?: ContinuousXYModel;
+  continuousXYWindowPackets?: number;
 }
 
 interface ModelStatus {
@@ -57,6 +68,7 @@ export class MultiNodeDashboardServer {
   private timer: NodeJS.Timeout | null = null;
   private state: MultiNodeSnapshot;
   private modelStatus: ModelStatus;
+  private xyRuntime: LiveXYRuntime | null = null;
   private sequence = 0;
 
   constructor(
@@ -74,6 +86,15 @@ export class MultiNodeDashboardServer {
       windows: null,
       error: null,
     };
+    if (options.continuousXYModel) {
+      this.activateContinuousXYModel(
+        options.continuousXYModel,
+        options.receiverMappings,
+        options.continuousXYWindowPackets === undefined
+          ? {}
+          : { windowPackets: options.continuousXYWindowPackets },
+      );
+    }
     this.server = createServer((request, response) => void this.handle(request, response));
   }
 
@@ -98,6 +119,10 @@ export class MultiNodeDashboardServer {
   address(): { port: number } | null {
     const value = this.server.address();
     return value && typeof value === 'object' ? { port: value.port } : null;
+  }
+
+  acceptProtocolV2Datagram(input: Buffer, source: UdpSource, receivedAtMs = Date.now()) {
+    return this.xyRuntime?.acceptDatagram(input, source, receivedAtMs) ?? [];
   }
 
   private publish(): void {
@@ -194,7 +219,10 @@ export class MultiNodeDashboardServer {
         const body = await this.readBody(request);
         const outPath = String(body.path || this.options.modelPath);
         if (body.target === 'continuous-xy') {
-          const sourceMappings = parseSourceMappings(body.sourceMappings);
+          const sourceMappings = enrichSourceMappings(
+            parseSourceMappings(body.sourceMappings),
+            this.options.receiverMappings,
+          );
           const examples = await buildContinuousXYDataset({
             recordingsDir: this.options.recordingsDir,
             sourceMappings,
@@ -208,6 +236,9 @@ export class MultiNodeDashboardServer {
             featureVersion: 1,
           });
           await saveContinuousXYModel(outPath, model);
+          this.activateContinuousXYModel(model, sourceMappingsToRuntimeMappings(sourceMappings), {
+            windowPackets: Math.max(4, Number(body.windowPackets ?? 24)),
+          });
           this.modelStatus = {
             loaded: true,
             path: outPath,
@@ -243,6 +274,7 @@ export class MultiNodeDashboardServer {
           ...(minRecordingsPerClass ? { minRecordingsPerClass } : {}),
         });
         const loaded = await loadPortableModel(outPath);
+        this.clearContinuousXYRuntime();
         this.engine.setModel(loaded);
         this.modelStatus = {
           loaded: true,
@@ -260,7 +292,29 @@ export class MultiNodeDashboardServer {
       if (request.method === 'POST' && url.pathname === '/api/model/load') {
         const body = await this.readBody(request);
         const path = String(body.path || this.options.modelPath);
+        if ((await this.modelKind(path)) === 'continuous-xy') {
+          const model = await loadContinuousXYModel(path);
+          const mappings =
+            body.sourceMappings && typeof body.sourceMappings === 'object'
+              ? sourceMappingsToRuntimeMappings(parseSourceMappings(body.sourceMappings))
+              : this.options.receiverMappings;
+          this.activateContinuousXYModel(model, mappings);
+          this.modelStatus = {
+            loaded: true,
+            path,
+            target: 'continuous-xy',
+            classes: ['continuous-xy'],
+            trainedAt: model.trainedAt,
+            recordings: model.examples.length,
+            windows: null,
+            error: null,
+            validatedContinuousXY: model.validation.validatedContinuousXY,
+          };
+          this.broadcast('model', this.modelStatus);
+          return void this.sendJson(response, 200, this.modelStatus);
+        }
         const loaded = await loadPortableModel(path);
+        this.clearContinuousXYRuntime();
         this.engine.setModel(loaded);
         this.modelStatus = {
           loaded: true,
@@ -379,6 +433,38 @@ export class MultiNodeDashboardServer {
     return this.options.recorder;
   }
 
+  private activateContinuousXYModel(
+    model: ContinuousXYModel,
+    requestedMappings?: ReceiverSourceMapping[],
+    runtimeOptions: { windowPackets?: number } = {},
+  ): void {
+    if (!(this.engine instanceof JointPositionEngine)) {
+      throw new Error('continuous XY activation requires JointPositionEngine');
+    }
+    const mappings = this.options.receiverMappings ?? requestedMappings;
+    if (!mappings || mappings.length < 3) {
+      throw new Error('continuous XY activation requires at least three receiver mappings');
+    }
+    this.engine.setModel(undefined);
+    this.engine.clearJointPrediction();
+    const jointEngine = this.engine;
+    this.xyRuntime = new LiveXYRuntime(model, mappings, {
+      ...runtimeOptions,
+      onPrediction: (prediction) => jointEngine.setJointPrediction(prediction),
+    });
+    jointEngine.setJointPrediction(null);
+  }
+
+  private clearContinuousXYRuntime(): void {
+    this.xyRuntime = null;
+    if (this.engine instanceof JointPositionEngine) this.engine.clearJointPrediction();
+  }
+
+  private async modelKind(path: string): Promise<'continuous-xy' | 'portable'> {
+    const parsed = JSON.parse(await readFile(path, 'utf8')) as { format?: string };
+    return parsed.format === CONTINUOUS_XY_MODEL_FORMAT ? 'continuous-xy' : 'portable';
+  }
+
   private async sendStatic(response: ServerResponse, root: string, name: string): Promise<void> {
     const content = await readFile(`${root}${name}`);
     const contentType = name.endsWith('.html')
@@ -427,6 +513,30 @@ export class MultiNodeDashboardServer {
     });
     response.end(content);
   }
+}
+
+function sourceMappingsToRuntimeMappings(
+  mappings: Record<'A' | 'B' | 'C' | 'D', { address?: string; port?: number; deviceId: string }>,
+): ReceiverSourceMapping[] {
+  return (['A', 'B', 'C', 'D'] as const).map((slot) => ({ slot, ...mappings[slot] }));
+}
+
+function enrichSourceMappings(
+  mappings: Record<'A' | 'B' | 'C' | 'D', { address?: string; port?: number; deviceId: string }>,
+  receiverMappings: ReceiverSourceMapping[] | undefined,
+): Record<'A' | 'B' | 'C' | 'D', { address?: string; port?: number; deviceId: string }> {
+  if (!receiverMappings) return mappings;
+  const bySlot = new Map(receiverMappings.map((mapping) => [mapping.slot, mapping]));
+  const output = {} as Record<'A' | 'B' | 'C' | 'D', { address?: string; port?: number; deviceId: string }>;
+  for (const slot of ['A', 'B', 'C', 'D'] as const) {
+    const serverMapping = bySlot.get(slot);
+    output[slot] = {
+      ...mappings[slot],
+      ...(serverMapping?.address !== undefined ? { address: serverMapping.address } : {}),
+      ...(serverMapping?.port !== undefined ? { port: serverMapping.port } : {}),
+    };
+  }
+  return output;
 }
 
 function parseSourceMappings(value: unknown): Record<'A' | 'B' | 'C' | 'D', { address?: string; port?: number; deviceId: string }> {

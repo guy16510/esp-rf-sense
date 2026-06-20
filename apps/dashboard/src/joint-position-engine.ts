@@ -41,6 +41,10 @@ export class JointPositionEngine extends MultiNodeEngine {
     };
   }
 
+  clearJointPrediction(): void {
+    this.jointPosition = undefined;
+  }
+
   override snapshot(nowMs = Date.now()): MultiNodeSnapshot {
     const snapshot = super.snapshot(nowMs);
     if (this.jointPosition === undefined) return snapshot;
