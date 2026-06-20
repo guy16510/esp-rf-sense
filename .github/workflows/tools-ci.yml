@@ -43,8 +43,8 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
-      - name: Protocol and packet alignment
-        run: npx vitest run apps/dashboard/src/protocol-v2.test.ts apps/dashboard/src/joint-packet-aligner.test.ts apps/dashboard/src/joint-xy-features.test.ts --reporter=verbose
+      - name: Protocol, recording mapping, and packet alignment
+        run: npx vitest run apps/dashboard/src/protocol-v2.test.ts apps/dashboard/src/continuous-xy-dataset.test.ts apps/dashboard/src/joint-packet-aligner.test.ts apps/dashboard/src/joint-xy-features.test.ts --reporter=verbose
       - name: Train and validate continuous XY
         run: npx vitest run apps/dashboard/src/continuous-xy-model.test.ts apps/dashboard/src/live-xy-runtime.test.ts apps/dashboard/src/live-xy-dashboard.test.ts apps/dashboard/src/simulated-xy-pipeline.test.ts --reporter=verbose
 
@@ -57,7 +57,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Setup Python 3.12
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v4
         with:
           python-version: "3.12"
       - name: Install analysis package with dev extras
