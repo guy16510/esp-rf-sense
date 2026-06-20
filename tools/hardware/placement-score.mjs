@@ -1,1 +1,0 @@
-export const PLACEMENT_SCORE_VERSION = 1;
