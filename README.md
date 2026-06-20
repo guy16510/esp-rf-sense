@@ -43,14 +43,18 @@ firmware/            ESP-IDF v5.3.2 application (ESP32-S3, C++ components)
                      device_health, mdns_service
   tools/             build_bootstrap_bundle.py, gen_manifest.py, size_check.py
   test/host/         host-compiled unit tests (no hardware; run in CI)
+apps/
+  dashboard/         four-receiver dashboard, recording, training, and live localization
 tools/
   collector/         (TS) UDP CSI receiver: validate, record JSONL+binary+CSV, loss/reboot stats
   ota-server/        (TS) HTTPS manifest + firmware server with startup validation
   cli/               (TS) device:discover / device:ota:check / device:ota:apply / device:status
   experiments/       (TS) remote experiment runner + metadata schema + group templates
   analysis/          (Python) raw parser, DSP, features, classical ML, group-aware CV
+deploy/unraid/       Unraid application template
+docker/              container entrypoint and runtime configuration
 docs/                architecture + protocol + operating + security + limitations
-.github/workflows/   firmware-ci, tools-ci, release, deploy-ota
+.github/workflows/   firmware-ci, tools-ci, container, release, deploy-ota
 ```
 
 ## Toolchain (all pinned)
@@ -61,6 +65,27 @@ docs/                architecture + protocol + operating + security + limitation
 | Node | 22.x LTS | [.nvmrc](.nvmrc), CI |
 | Python | 3.12 | [tools/analysis/pyproject.toml](tools/analysis/pyproject.toml), CI |
 | Target | ESP32-S3-WROOM-1-N4R8 (4 MB flash / 8 MB PSRAM) | [firmware/sdkconfig.defaults](firmware/sdkconfig.defaults) |
+
+## Unraid dashboard container
+
+The four-receiver dashboard is published as:
+
+```text
+ghcr.io/guy16510/esp-rf-sense:latest
+```
+
+It exposes TCP `8080` for the dashboard and API, UDP `5566` for CSI datagrams, and persists
+recordings and trained models under `/data`. Every image is built and smoke-tested in GitHub
+Actions before it is published. See [docs/unraid-container.md](docs/unraid-container.md) for the
+Unraid XML template, GHCR authentication, receiver configuration, updates, and rollback.
+
+Local Docker equivalent:
+
+```bash
+docker compose up --build
+```
+
+Then open `http://127.0.0.1:8080/fleet`.
 
 ## Running this (agent runbook)
 
@@ -179,6 +204,7 @@ Real CSI data, binary size, and endurance/OTA-cycle numbers require tasks D–E 
 |---|---|---|
 | [firmware-ci](.github/workflows/firmware-ci.yml) | push/PR | host tests + build firmware + size budget + bootstrap/manifest artifacts |
 | [tools-ci](.github/workflows/tools-ci.yml) | push/PR | Node lint/typecheck/test/build + Python ruff/pytest |
+| [container](.github/workflows/container.yml) | push/PR/manual | build image + launch dashboard smoke test + publish `latest`, SHA, and version tags to GHCR |
 | [release](.github/workflows/release.yml) | `v*.*.*` tag | rebuild from tag → release `.bin` + bootstrap bundle + stable manifest + SHA256SUMS |
 | [deploy-ota](.github/workflows/deploy-ota.yml) | manual | promote an existing release to the stable OTA server (never rebuilds) |
 
