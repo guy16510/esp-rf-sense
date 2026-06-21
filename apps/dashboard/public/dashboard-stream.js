@@ -8,6 +8,17 @@ const state = {
   sequence: 0,
   lastEventAt: 0,
   latestSnapshot: null,
+  lastPosition: null,
+  lastPositionAt: 0,
+};
+
+const BAR_ZONE_NEIGHBORS = {
+  'near-left': ['near-center', 'far-left'],
+  'near-center': ['near-left', 'near-right', 'far-center'],
+  'near-right': ['near-center', 'far-right'],
+  'far-left': ['near-left', 'far-center'],
+  'far-center': ['far-left', 'far-right', 'near-center'],
+  'far-right': ['far-center', 'near-right'],
 };
 
 function on(type, handler) {
@@ -28,6 +39,7 @@ function parse(event, type) {
       const sequence = Number(value.sequence ?? state.sequence + 1);
       if (!Number.isFinite(sequence) || sequence <= state.sequence) return;
       state.sequence = sequence;
+      guardCoarseTransition(value);
       state.latestSnapshot = value;
       emit('snapshot', value);
       emit('nodes', value);
@@ -39,6 +51,40 @@ function parse(event, type) {
     state.parseErrors++;
     emit('error', error);
   }
+}
+
+function guardCoarseTransition(snapshot) {
+  const fused = snapshot?.fused;
+  const position = fused?.position;
+  const coarse = fused?.modelTarget === 'coarse-zones' || fused?.modelTarget === 'position';
+  if (!coarse || !position?.accepted || !position.zone) {
+    if (fused?.state === 'clear') {
+      state.lastPosition = null;
+      state.lastPositionAt = 0;
+    }
+    return;
+  }
+  const now = Date.now();
+  const previous = state.lastPosition;
+  if (
+    previous?.zone &&
+    previous.zone !== position.zone &&
+    now - state.lastPositionAt < 1200 &&
+    Number(position.confidence || 0) < 0.9 &&
+    !(BAR_ZONE_NEIGHBORS[previous.zone] || []).includes(position.zone)
+  ) {
+    fused.position = {
+      ...previous,
+      reason: `held previous zone; rejected implausible jump to ${position.zone}`,
+    };
+    fused.zone = previous.zone;
+    fused.bubbles = Array.isArray(fused.bubbles)
+      ? fused.bubbles.map((bubble) => ({ ...bubble, x: previous.x, y: previous.y, zone: previous.zone }))
+      : [];
+    return;
+  }
+  state.lastPosition = { ...position };
+  state.lastPositionAt = now;
 }
 
 function start() {
@@ -181,6 +227,7 @@ window.RfSenseDashboardStream = {
   start,
   state,
   trainPositionWithFallback,
+  guardCoarseTransition,
 };
 
 installTrainingFallback();

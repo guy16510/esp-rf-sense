@@ -3,6 +3,7 @@
   "compilerOptions": {"rootDir": "src", "outDir": "dist"},
   "files": [
     "src/activity.ts",
+    "src/bar-calibration-algorithm.ts",
     "src/cli.ts",
     "src/contracts.ts",
     "src/continuous-xy-dataset.ts",

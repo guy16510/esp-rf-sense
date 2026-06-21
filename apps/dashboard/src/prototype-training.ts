@@ -20,6 +20,16 @@ export interface FittedPrototype {
   distanceThreshold: number;
 }
 
+export interface ValidationConfusionCell {
+  actual: string;
+  predicted: string;
+  count: number;
+}
+
+export type ValidationMetricWithConfusion = ValidationMetric & {
+  confusion?: ValidationConfusionCell[];
+};
+
 export function fitPrototype(examples: TrainingExample[]): FittedPrototype {
   const rows = examples.map((example) => example.features);
   const width = rows[0]?.length ?? 0;
@@ -115,6 +125,7 @@ function classificationHoldout(
   let correct = 0;
   let samples = 0;
   let folds = 0;
+  const confusion = new Map<string, ValidationConfusionCell>();
   for (const group of groups) {
     const train = examples.filter((example) => example[key] !== group);
     const known = new Set(train.map((example) => example.label));
@@ -123,7 +134,12 @@ function classificationHoldout(
     const model = fitPrototype(train);
     folds++;
     for (const example of test) {
-      if (predictPrototype(model, example.features).label === example.label) correct++;
+      const predicted = predictPrototype(model, example.features).label;
+      if (predicted === example.label) correct++;
+      const cellKey = `${example.label}\u0000${predicted}`;
+      const cell = confusion.get(cellKey) ?? { actual: example.label, predicted, count: 0 };
+      cell.count++;
+      confusion.set(cellKey, cell);
       samples++;
     }
   }
@@ -131,18 +147,22 @@ function classificationHoldout(
     return unavailable(protocol, `${protocol} had no usable folds with known test classes`);
   }
   const accuracy = correct / samples;
-  return {
+  const metric: ValidationMetricWithConfusion = {
     protocol,
     status: accuracy >= 0.6 ? 'pass' : 'fail',
     folds,
     samples,
     accuracy,
     unknownRejection: null,
+    confusion: [...confusion.values()].sort(
+      (left, right) => right.count - left.count || left.actual.localeCompare(right.actual),
+    ),
     note:
       accuracy >= 0.6
         ? 'Whole recordings remain grouped; no adjacent windows leak into training.'
         : `${protocol} accuracy was ${(accuracy * 100).toFixed(1)}%, below the 60% gate`,
   };
+  return metric;
 }
 
 function positionHoldout(examples: TrainingExample[]): ValidationMetric {
