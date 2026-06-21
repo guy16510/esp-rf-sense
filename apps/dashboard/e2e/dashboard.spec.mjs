@@ -27,6 +27,38 @@ test('renders four live receivers and the D3 room view', async ({ page }) => {
   await expect(page.locator('.rf-room-footer')).toContainText(/not verified people counts|Position unavailable|No marker is shown|no receiver accepted a trained position/);
 });
 
+test('shows dashboard next action, coverage, trust gates, and receiver geometry', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('rfsense-room-setup/v1', JSON.stringify({
+      version: 1,
+      roomName: 'Tap room',
+      widthFeet: 6,
+      lengthFeet: 5,
+      subjectId: 'person-1',
+      emptyRecordings: 2,
+      completedRecordingNames: ['empty-a', 'empty-b', 'left-a', 'center-a', 'right-a', 'door-a'],
+      zones: [
+        { id: 'door', label: 'door', x: 0.5, y: 0.12, stationary: 1, moving: 0 },
+        { id: 'left', label: 'left', x: 0.2, y: 0.5, stationary: 1, moving: 0 },
+        { id: 'center', label: 'center', x: 0.5, y: 0.5, stationary: 1, moving: 0 },
+        { id: 'right', label: 'right', x: 0.8, y: 0.5, stationary: 1, moving: 0 },
+      ],
+      validation: {},
+      complete: false,
+    }));
+  });
+  await page.goto(baseURL, { waitUntil: 'domcontentloaded' });
+  await expect(page.locator('#setupGuidanceCard')).toBeVisible();
+  await expect(page.locator('#setupNextAction')).toContainText(/Train model|Run live validation|Fix rejected position|Fix receiver health/);
+  await expect(page.locator('#setupHealthChecklist span')).toHaveCount(5);
+  await expect(page.locator('#calibrationCoveragePanel')).toBeVisible();
+  await expect(page.locator('.calibration-coverage-cell')).toHaveCount(4);
+  await expect(page.locator('.calibration-coverage-cell.complete')).toHaveCount(4);
+  await expect(page.locator('#modelQualitySummary')).toContainText('Validation gates');
+  await expect(page.locator('#whyNoDot')).toContainText(/No dot because|Dot is visible/);
+  await expect(page.locator('#receiverGeometryLayer .receiver-geometry-node')).toHaveCount(4);
+});
+
 test('shows device redirection, OTA, and validation onboarding', async ({ page }) => {
   await page.goto(`${baseURL}/fleet?guide=device`, { waitUntil: 'domcontentloaded' });
   await expect(page.getByRole('heading', { name: /Connect, redirect, update/ })).toBeVisible();
