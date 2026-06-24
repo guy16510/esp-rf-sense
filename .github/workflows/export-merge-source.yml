@@ -1,0 +1,23 @@
+name: Export merge source
+
+on:
+  push:
+    branches:
+      - codex/research-backed-presence-merge
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Archive checkout
+        run: zip -qr source-checkout.zip . -x '.git/*'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: merge-source-checkout
+          path: source-checkout.zip
+          if-no-files-found: error
+          retention-days: 1
